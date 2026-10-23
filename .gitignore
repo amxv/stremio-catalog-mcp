@@ -1,0 +1,22 @@
+# Build outputs
+/dist
+# Bun/Astro docs
+/docs/node_modules/
+
+# macOS
+.DS_Store
+
+# Astro docs
+/docs/.astro/
+/docs/dist/
+/docs/.vercel/
+
+# Local Vercel API project
+/.vercel/
+
+# Secrets
+.env
+.env.*
+!.env.example
+.vercel
+.env*.local

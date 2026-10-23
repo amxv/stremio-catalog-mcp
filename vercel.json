@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/*.go": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "*": false
+    }
+  }
+}

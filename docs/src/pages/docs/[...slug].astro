@@ -1,0 +1,81 @@
+---
+import { getCollection, render } from "astro:content";
+import BaseLayout from "zuedocs/layouts/BaseLayout.astro";
+import DocsPageLayout from "zuedocs/layouts/DocsPageLayout.astro";
+import { docCategories, primaryNav, siteConfig } from "../../data/docs";
+
+const docs = (await getCollection("docs")).sort((a, b) => a.data.order - b.data.order);
+
+export async function getStaticPaths() {
+  const entries = await getCollection("docs");
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry }
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const grouped = docCategories
+  .map((category) => ({
+    category,
+    entries: docs.filter((doc) => doc.data.category === category)
+  }))
+  .filter((group) => group.entries.length > 0);
+---
+
+<BaseLayout
+  title={`${entry.data.title} | ${siteConfig.name} Docs`}
+  description={entry.data.description}
+  siteConfig={siteConfig}
+  primaryNav={primaryNav}
+>
+  <section class="shell docs-shell">
+    <aside class="docs-sidebar">
+      <p class="docs-sidebar__eyebrow">Docs map</p>
+      {grouped.map((group) => (
+        <div class="docs-sidebar__group">
+          <p>{group.category}</p>
+          <ul>
+            {group.entries.map((doc) => (
+              <li>
+                <a
+                  class:list={["docs-sidebar__link", doc.id === entry.id && "is-active"]}
+                  href={`/docs/${doc.id}`}
+                >
+                  {doc.data.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </aside>
+
+    <article class="docs-article">
+      <DocsPageLayout
+        title={entry.data.title}
+        description={entry.data.description}
+        category={entry.data.category}
+      >
+        <Content />
+      </DocsPageLayout>
+    </article>
+
+    <aside class="docs-toc">
+      <p class="docs-toc__eyebrow">On this page</p>
+      <ul>
+        {headings.map((heading) => (
+          <li>
+            <a href={`#${heading.slug}`}>{heading.text}</a>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  </section>
+</BaseLayout>
+
+<script>
+  import "zuedocs/docsEnhancements";
+</script>
