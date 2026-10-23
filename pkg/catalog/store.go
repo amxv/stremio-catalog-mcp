@@ -119,7 +119,9 @@ func (s *RedisStore) CAS(ctx context.Context, previous, next string) (bool, erro
 
 // AcquireSyncLock serializes our own Stremio account mutations across Vercel instances.
 func (s *RedisStore) AcquireSyncLock(ctx context.Context, token string) (bool, error) {
-	res, err := s.command(ctx, "SET", s.Key+":account-sync", token, "NX", "EX", 25)
+	// Four sequential Stremio requests can take up to ~40s when upstream is slow.
+	// Keep the lease longer than the normal Vercel request lifetime.
+	res, err := s.command(ctx, "SET", s.Key+":account-sync", token, "NX", "EX", 60)
 	if err != nil {
 		return false, err
 	}

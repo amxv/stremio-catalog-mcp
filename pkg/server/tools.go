@@ -32,6 +32,10 @@ type SyncStatus struct {
 	Message string `json:"message"`
 }
 
+func contentOnlyStatus() SyncStatus {
+	return SyncStatus{Message: "Catalog titles saved; no account manifest update was necessary. Existing Stremio rows will fetch updated contents when refreshed."}
+}
+
 func (rt Runtime) sync(ctx context.Context) SyncStatus {
 	if rt.Account.AuthKey == "" {
 		return SyncStatus{Message: "Saved. Stremio account not linked; install the addon URL manually or configure STREMIO_AUTH_KEY to enable automatic row syncing."}
@@ -90,6 +94,9 @@ func serverFor(rt Runtime) *mcp.Server {
 			if err != nil {
 				return nil, RowResult{}, err
 			}
+			if in.ID != "" && in.Name == "" && in.Position == nil {
+				return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
+			}
 			return nil, RowResult{Catalog: row, Status: rt.sync(ctx)}, nil
 		})
 
@@ -102,7 +109,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			if err != nil {
 				return nil, RowResult{}, err
 			}
-			return nil, RowResult{Catalog: row, Status: rt.sync(ctx)}, nil
+			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "catalog_clear", Description: "Remove all titles from one row while keeping its name, ID and position on the Stremio home screen."},
@@ -113,7 +120,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			if err != nil {
 				return nil, RowResult{}, err
 			}
-			return nil, RowResult{Catalog: row, Status: rt.sync(ctx)}, nil
+			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "catalog_delete", Description: "Permanently remove a catalog row and its contents from our add-on manifest. Does not touch other addons."},

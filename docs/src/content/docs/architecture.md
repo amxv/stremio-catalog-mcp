@@ -38,6 +38,8 @@ Manifest declarations contain each row's stable ID, display name, and content ty
 
 For full dynamic row support, an optional account adapter uses `addonCollectionGet` then `addonCollectionSet` to merge our new descriptor into the account's installed add-on collection. **The set operation replaces the entire collection**, so our adapter preserves unrelated descriptors, flags and order. Each manifest update receives a revisioned URL so clients have a better chance of recognizing changed declarations.
 
+Adding, replacing, clearing, or removing **titles inside an existing row** needs no account-collection write. Those changes are served directly from the catalog endpoint. We reserve account sync for new/deleted/renamed/reordered row declarations and explicit `catalog_sync` calls, reducing unnecessary calls to Stremio's account API.
+
 **Caveat:** This Stremio account API is used by Stremio's own clients but isn't a separately supported third-party contract. Its updates aren't transactional with other devices; external simultaneous edits can race. We serialize our own syncs with an Upstash lease, reread the live account state, and verify the result, but cross-client conflicts cannot be completely eliminated. Never give this service blanket ability to remove unrelated add-ons.
 
 ## Data and safety
