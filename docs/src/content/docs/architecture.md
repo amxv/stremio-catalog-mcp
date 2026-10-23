@@ -42,6 +42,8 @@ Adding, replacing, clearing, or removing **titles inside an existing row** needs
 
 **Caveat:** This Stremio account API is used by Stremio's own clients but isn't a separately supported third-party contract. Its updates aren't transactional with other devices; external simultaneous edits can race. We serialize our own syncs with an Upstash lease, reread the live account state, and verify the result, but cross-client conflicts cannot be completely eliminated. Never give this service blanket ability to remove unrelated add-ons.
 
+Before every account-collection replacement, the Go service stores a timestamped copy of the previous descriptors in a private Redis backup list (last 10 snapshots). If the backup cannot be saved, the account write is refused. These records may contain sensitive installed add-on URLs, so they are never exposed as MCP responses or through the public catalog feed.
+
 ## Data and safety
 
 `pkg/catalog` stores the row document with optimistic compare-and-swap using Redis Lua `EVAL`. Parallel agent writes cannot silently overwrite each other. A separate short Redis lock serializes account syncs across Vercel instances. HTTP endpoints reject missing secrets; the read-only Stremio feed has a different token from the write-capable MCP endpoint.

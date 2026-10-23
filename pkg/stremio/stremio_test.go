@@ -72,6 +72,14 @@ func TestAccountSyncPreservesStreamingAddons(t *testing.T) {
 	}))
 	defer srv.Close()
 	api := AccountAPI{BaseURL: srv.URL, AuthKey: "test-auth"}
+	backupCalls := 0
+	api.BeforeReplace = func(_ context.Context, items []Descriptor) error {
+		backupCalls++
+		if len(items) != 2 && len(items) != 3 {
+			t.Fatalf("unexpected backup snapshot: %d", len(items))
+		}
+		return nil
+	}
 	state := catalog.State{Revision: 1, Rows: []catalog.Row{{ID: "row_abc", Name: "Comedy", Type: "series", Items: []catalog.Item{}}}}
 	if err := api.Sync(context.Background(), state, "https://my.example/stremio/secret/v1/manifest.json"); err != nil {
 		t.Fatal(err)
@@ -86,6 +94,9 @@ func TestAccountSyncPreservesStreamingAddons(t *testing.T) {
 	}
 	if len(current) != 3 || current[2].TransportURL != "https://my.example/stremio/secret/v2/manifest.json" {
 		t.Fatalf("did not update own descriptor: %+v", current[2])
+	}
+	if backupCalls != 2 {
+		t.Fatalf("expected two pre-write snapshots, received %d", backupCalls)
 	}
 }
 

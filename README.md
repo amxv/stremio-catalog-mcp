@@ -66,6 +66,8 @@ Never reuse the MCP key as the feed key. Neither belongs in source control or pu
 
 Stremio account sync uses its own `addonCollectionGet` and `addonCollectionSet` methods. Each update reads the latest collection, replaces **only our own descriptor**, and verifies the new manifest. Unrelated entries, including Cinemeta and playback providers, are preserved. Versioned URLs help clients notice newly created or renamed rows. A TV app restart may still be necessary; the Stremio protocol has no real-time push API.
 
+Before the whole-collection Stremio write, a private Redis backup preserves the previous installed-addon descriptors (last 10). If backup storage fails, no account write is attempted. These backups can contain private configured streaming addon URLs and are not accessible from MCP tools.
+
 ## Local development
 
 Go 1.26+ and Bun (for documentation) are required:

@@ -133,3 +133,21 @@ func (s *RedisStore) ReleaseSyncLock(ctx context.Context, token string) error {
 	_, err := s.command(ctx, "EVAL", script, 1, s.Key+":account-sync", token)
 	return err
 }
+
+// SaveAddonBackup retains the ten latest pre-write Stremio account snapshots.
+// These contain private configured addon URLs, so never return them via MCP.
+func (s *RedisStore) SaveAddonBackup(ctx context.Context, raw []byte) error {
+	if len(raw) == 0 || len(raw) > 2<<20 {
+		return errors.New("invalid account snapshot size")
+	}
+	backup, err := json.Marshal(struct {
+		SavedAt string          `json:"saved_at"`
+		Addons  json.RawMessage `json:"addons"`
+	}{SavedAt: time.Now().UTC().Format(time.RFC3339), Addons: raw})
+	if err != nil {
+		return err
+	}
+	const script = `redis.call('LPUSH', KEYS[1], ARGV[1]); redis.call('LTRIM', KEYS[1], 0, 9); return 1`
+	_, err = s.command(ctx, "EVAL", script, 1, s.Key+":account-backups", string(backup))
+	return err
+}

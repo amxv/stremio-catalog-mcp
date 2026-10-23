@@ -21,6 +21,9 @@ type AccountAPI struct {
 	BaseURL string
 	AuthKey string
 	Client  *http.Client
+	// BeforeReplace must successfully persist a private snapshot of the current
+	// account collection before the whole-collection Stremio API write proceeds.
+	BeforeReplace func(context.Context, []Descriptor) error
 }
 
 type Descriptor struct {
@@ -203,6 +206,11 @@ func (a AccountAPI) Sync(ctx context.Context, state catalog.State, manifestURL s
 	}
 	if !reflect.DeepEqual(latest, current) {
 		return errors.New("Stremio add-on collection changed while syncing; retry to avoid overwriting other addons")
+	}
+	if a.BeforeReplace != nil {
+		if err := a.BeforeReplace(ctx, latest); err != nil {
+			return fmt.Errorf("refusing Stremio write because the account backup failed: %w", err)
+		}
 	}
 	if err := a.Set(ctx, updated); err != nil {
 		return err

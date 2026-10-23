@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"time"
 
@@ -20,9 +21,17 @@ type Runtime struct {
 
 func runtimeFromEnv() Runtime {
 	store := &catalog.RedisStore{URL: os.Getenv("UPSTASH_REDIS_REST_URL"), Token: os.Getenv("UPSTASH_REDIS_REST_TOKEN"), Key: "stremio-catalog-mcp:v1:catalogs"}
+	account := stremio.AccountAPI{AuthKey: os.Getenv("STREMIO_AUTH_KEY")}
+	account.BeforeReplace = func(ctx context.Context, addons []stremio.Descriptor) error {
+		raw, err := json.Marshal(addons)
+		if err != nil {
+			return err
+		}
+		return store.SaveAddonBackup(ctx, raw)
+	}
 	return Runtime{
 		Manager: catalog.Manager{Store: store, Resolver: catalog.Cinemeta{}},
-		Account: stremio.AccountAPI{AuthKey: os.Getenv("STREMIO_AUTH_KEY")},
+		Account: account,
 		Store:   store, BaseURL: os.Getenv("PUBLIC_BASE_URL"), FeedToken: os.Getenv("STREMIO_FEED_TOKEN"),
 	}
 }
