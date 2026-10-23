@@ -1,74 +1,122 @@
 ---
-import { getCollection } from "astro:content";
-import BaseLayout from "zuedocs/layouts/BaseLayout.astro";
-import { primaryNav, siteConfig } from "../data/docs";
+import "../styles/landing.css";
 
-const docs = (await getCollection("docs")).sort((a, b) => a.data.order - b.data.order);
-const capabilities = [
-  { title: "ChatGPT chooses", body: "Let your AI agent browse, research and pick titles. No competing recommendation system." },
-  { title: "Stremio displays", body: "Native movie and series rows populated with Cinemeta-compatible IMDb IDs." },
-  { title: "Edit everything", body: "Rename, reorder, append, replace, clear or remove titles and whole catalog rows." },
-  { title: "Streams stay yours", body: "No playback providers, metadata replacements, tracking databases or TV-side modifications." }
+const examples = [
+  { index: "01", label: "Psych", year: "2006", kind: "SERIES", art: "psych" },
+  { index: "02", label: "Monk", year: "2002", kind: "SERIES", art: "monk" },
+  { index: "03", label: "Only Murders", year: "2021", kind: "SERIES", art: "murders" }
+];
+
+const steps = [
+  { number: "01", type: "A CONVERSATION", title: "Ask a better question.", detail: "Describe what you're in the mood for. ChatGPT can research, compare, remember context, and choose the titles, just as it does today.", example: "“Some clever, funny murder mysteries. Nothing too dark.”" },
+  { number: "02", type: "ONE TOOL CALL", title: "Send the good stuff.", detail: "The MCP receives a row name and the titles you picked. It resolves their IMDb IDs and creates a native Stremio catalog, without making recommendations itself.", example: "catalog_put({ name, type, items })" },
+  { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Your catalog appears alongside your other rows. Open any title and the metadata and streaming add-ons you already love take over.", example: "Murder mysteries with a wink  ↗" }
+];
+
+const features = [
+  { id: "A", title: "Make a row. Make it yours.", copy: "Create collections for any mood, theme, director, era, or oddly specific obsession. Every row gets its own name." },
+  { id: "B", title: "Change your mind freely.", copy: "Add, remove, replace, clear, rename, and reorder. Your catalogs aren't a fixed playlist; they're yours to shape." },
+  { id: "C", title: "Keep what already works.", copy: "Your current Stremio add-ons still provide the streams. Cinemeta-compatible IDs tie everything together." },
+  { id: "D", title: "Works with any MCP agent.", copy: "ChatGPT today, another MCP-capable client tomorrow. The bridge stays deliberately small and model-independent." }
 ];
 ---
 
-<BaseLayout title={`${siteConfig.name} | ${siteConfig.strapline}`} description={siteConfig.description} siteConfig={siteConfig} primaryNav={primaryNav}>
-  <section class="hero shell">
-    <div class="hero__copy">
-      <p class="section-label">MCP → Stremio</p>
-      <h1>Send your picks straight to the big screen.</h1>
-      <p class="hero__lede">
-        Ask your AI assistant for movies or shows. It picks the titles and publishes
-        a new collection on your Stremio home screen, ready for your existing streaming addons.
-      </p>
-      <p class="hero__annotation">No recommendation engine. No new TV app. Just native Stremio catalogs.</p>
-      <div class="hero__actions">
-        <a class="button button--solid" href="/docs/quickstart">Quickstart</a>
-        <a class="button button--ghost" href="/docs/architecture">Architecture</a>
-      </div>
-    </div>
-    <aside class="hero__panel">
-      <p class="hero__panel-label">One conversation. One catalog.</p>
-      <ul class="hero__signal-list">
-        <li><strong>You:</strong> Find funny murder mysteries rated over 7 on IMDb.</li>
-        <li><strong>Assistant:</strong> Recommends and calls catalog_put.</li>
-        <li><strong>Stremio:</strong> Shows a named row of your selected series.</li>
-      </ul>
-      <div class="hero__terminal">
-        <span>{'catalog_put({ name, type, items })'}</span>
-        <span>catalog_list()</span>
-        <span>{'catalog_clear({ row_id })'}</span>
-      </div>
-    </aside>
-  </section>
-  <section class="shell section-grid">
-    <div class="section-heading">
-      <p class="section-label">Included infrastructure</p>
-      <h2>Your recommendations, in the right place.</h2>
-      <p>Stremio handles viewing. Cinemeta handles title metadata. Your agent handles recommendations. We handle the handoff.</p>
-    </div>
-    <div class="proof-grid">
-      {capabilities.map((item) => (
-        <article class="proof-card"><h3>{item.title}</h3><p>{item.body}</p></article>
-      ))}
-    </div>
-  </section>
-  <section class="shell docs-teaser">
-    <div class="section-heading">
-      <p class="section-label">Guides</p>
-      <h2>Build, deploy, and start curating.</h2>
-    </div>
-    <div class="docs-teaser__grid">
-      {docs.map((entry) => (
-        <a class="docs-teaser__card" href={`/docs/${entry.id}`}>
-          <span>{entry.data.category}</span>
-          <h3>{entry.data.title}</h3>
-          <p>{entry.data.summary ?? entry.data.description}</p>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101512" />
+    <meta name="description" content="From a good question to a great watch. Publish ChatGPT's movie and TV recommendations directly as Stremio catalog rows, with one tiny MCP bridge." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Stremio Catalog MCP — From chat to couch" />
+    <meta property="og:description" content="Your AI does the recommending. Stremio does the streaming. This tiny MCP connects the two." />
+    <title>Stremio Catalog MCP — From chat to couch</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="site-noise" aria-hidden="true"></div>
+    <div class="shell">
+      <header class="topbar">
+        <a href="/" class="brand" aria-label="Stremio Catalog MCP home">
+          <span class="brand-glyph" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><rect x="2" y="3" width="28" height="7" rx="2" fill="currentColor"/><rect x="2" y="13" width="28" height="7" rx="2" fill="currentColor" opacity=".66"/><rect x="2" y="23" width="19" height="7" rx="2" fill="currentColor" opacity=".34"/></svg></span>
+          <span>stremio<span class="slash">/</span>catalog<span class="brand-tag">mcp</span></span>
         </a>
-      ))}
+        <nav class="nav" aria-label="Main navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#why-it-exists">The idea</a>
+          <a href="/docs">Documentation <span aria-hidden="true">↗</span></a>
+          <a href="https://github.com/amxv/stremio-catalog-mcp" aria-label="Source repository, currently private" title="Source repository (private preview)" target="_blank" rel="noopener noreferrer" class="github-link"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .9A11.1 11.1 0 0 0 8.49 22.54c.56.1.76-.24.76-.54v-2.12c-3.09.67-3.74-1.32-3.74-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.7.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.7-1.49-2.47-.28-5.06-1.23-5.06-5.49 0-1.22.43-2.21 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.15A10.6 10.6 0 0 1 12 6.42c.94 0 1.88.13 2.77.38 2.11-1.45 3.05-1.15 3.05-1.15.61 1.54.23 2.68.11 2.96.72.79 1.15 1.78 1.15 3 0 4.27-2.59 5.21-5.07 5.49.4.35.75 1.03.75 2.08V22c0 .3.2.65.76.54A11.1 11.1 0 0 0 12 .9Z"/></svg></a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> THE MISSING LINK IN MOVIE NIGHT <span class="eyebrow-counter">/ 001</span></p>
+            <h1 id="hero-title">From a good question to a <em>great watch.</em></h1>
+            <p class="lead">You already ask ChatGPT what to watch. Now send those recommendations straight to your Stremio home screen, as native, editable catalog rows.</p>
+            <div class="hero-actions"><a class="btn btn-primary" href="/docs/quickstart">Make your first catalog <span aria-hidden="true">↗</span></a><a class="btn btn-outline" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
+            <p class="hero-footnote"><span aria-hidden="true">✳</span> <strong>Your agent recommends.</strong> Your Stremio plays. We just connect them.</p>
+          </div>
+
+          <div class="hero-art" aria-label="Illustration of an AI conversation sending a catalog row to Stremio">
+            <div class="orbit orbit-a" aria-hidden="true"></div><div class="orbit orbit-b" aria-hidden="true"></div>
+            <div class="chat-bubble"><div class="chat-star" aria-hidden="true">✳</div><div><span class="chat-label">YOU, TO YOUR AGENT</span><p id="prompt-text">“Show me witty murder mysteries with an IMDb rating above 7.”</p></div><span class="chat-arrow" aria-hidden="true">↗</span></div>
+            <div class="transfer" aria-hidden="true"><span class="dash"></span><span class="transfer-pill">catalog_put <span>↗</span></span><span class="dash"></span></div>
+            <div class="tv-frame"><div class="tv-screen"><div class="tv-top"><span class="tv-wordmark"><span aria-hidden="true">◈</span> stremio</span><span>DISCOVER</span><span class="tv-avatar" aria-hidden="true">S</span></div><div class="tv-main"><div class="tv-kicker"><i></i> YOUR CUSTOM CATALOG</div><div class="tv-title-row"><h2 id="catalog-title">Murder mysteries with a wink</h2><span>SEE ALL <span aria-hidden="true">→</span></span></div><div class="poster-grid">
+              {examples.map((item) => (<div class={`poster poster-${item.art}`} data-poster><div class="poster-pattern" aria-hidden="true"><i></i><i></i><i></i></div><span class="poster-no">{item.index} / 03</span><span class="poster-caption"><strong data-poster-title>{item.label}</strong><small data-poster-meta>{item.year} · {item.kind}</small></span></div>))}
+            </div><div class="tv-status"><span><i></i> YOUR EXISTING STREAMING ADD-ONS</span><span>READY TO WATCH <span aria-hidden="true">↗</span></span></div></div></div></div><div class="tv-foot" aria-hidden="true"></div>
+            <div class="demo-picker"><span>TRY ANOTHER REQUEST</span><div class="demo-options"><button type="button" class="selected" data-scene="mystery" aria-pressed="true">Witty mysteries</button><button type="button" data-scene="space" aria-pressed="false">Mind-bending sci-fi</button><button type="button" data-scene="comedy" aria-pressed="false">Comfort comedy</button></div></div>
+            <p class="illustration-label">ILLUSTRATIVE PREVIEW · BUILT WITH THE REAL STREMIO CATALOG FORMAT</p>
+          </div>
+        </section>
+
+        <div class="marquee" aria-label="Your agent recommends. Stremio plays. No new streaming app."><div aria-hidden="true"><span>THE RECOMMENDATION IS THE EASY PART</span><b>✳</b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b>✳</b><span>THE RECOMMENDATION IS THE EASY PART</span><b>✳</b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b>✳</b></div></div>
+
+        <section class="section how" id="how-it-works"><div class="section-intro"><div><p class="eyebrow eyebrow-light">/ THE THREE ACTS</p><h2>A little less browsing.<br /><em>A lot more watching.</em></h2></div><p>From conversation to couch, in three tiny steps. The intelligence stays with your agent. The watching stays with Stremio.</p></div><div class="steps">{steps.map((step) => (<article class="step"><div class="step-top"><span>{step.number} / 03</span><span>{step.type}</span></div><div class="step-symbol" aria-hidden="true">{step.number === "01" ? "✳" : step.number === "02" ? "↗" : "▶"}</div><h3>{step.title}</h3><p>{step.detail}</p><div class="step-example">{step.example}</div></article>))}</div></section>
+
+        <section class="statement" id="why-it-exists"><p class="eyebrow eyebrow-dark">/ NOT ANOTHER RECOMMENDATION ENGINE</p><h2>You've already found <em>the good stuff.</em><br /><span>Now give it somewhere to live.</span></h2><div class="statement-bottom"><p>ChatGPT knows the conversation. Cinemeta knows the movie. Your streaming add-ons know how to play it. <strong>This MCP is the missing handoff.</strong></p><div class="statement-seal" aria-hidden="true"><span>BUILT FOR</span><strong>THE<br />COUCH</strong><span>NOT THE FEED</span></div></div></section>
+
+        <section class="section feature-section"><div class="section-intro feature-intro"><div><p class="eyebrow eyebrow-light">/ SMALL BRIDGE, BIG DIFFERENCE</p><h2>Make your screen<br /><em>feel like yours.</em></h2></div><p>Dynamic from day one, with no reinvention of the recommendation stack and no interference with how you stream.</p></div><div class="features">{features.map((feature) => (<article class="feature"><span class="feature-id">{feature.id} /</span><h3>{feature.title}</h3><p>{feature.copy}</p><span class="feature-arrow" aria-hidden="true">↗</span></article>))}</div></section>
+
+        <section class="cta-band"><span class="cta-decoration" aria-hidden="true">✳</span><div><p class="eyebrow eyebrow-dark">/ READY FOR MOVIE NIGHT?</p><h2>Talk about it.<br /><em>Then watch it.</em></h2><p>One Go server, one Stremio add-on, one very satisfying shortcut from recommendation to remote control.</p></div><a href="/docs/quickstart" class="cta-link">Read the quickstart <span aria-hidden="true">↗</span></a></section>
+      </main>
+
+      <footer class="footer"><a class="footer-brand" href="/">stremio<span>/</span>catalog<span class="footer-mcp">mcp</span></a><span>FROM CHAT TO COUCH. NO EXTRA CHANNELS.</span><div><a href="/docs">Docs ↗</a><a href="/docs/tools">MCP tools ↗</a><a href="https://github.com/amxv/stremio-catalog-mcp" target="_blank" rel="noopener noreferrer">Source (private preview) ↗</a></div></footer>
     </div>
-  </section>
-  <section class="shell closing-note">
-    <p>Apache-2.0 licensed Go service, designed for a future open-source release.</p>
-  </section>
-</BaseLayout>
+
+    <script>
+      const scenes: Record<string, { prompt: string; title: string; items: [string, string, string][] }> = {
+        mystery: { prompt: '“Show me witty murder mysteries with an IMDb rating above 7.”', title: "Murder mysteries with a wink", items: [["Psych", "2006 · SERIES", "psych"], ["Monk", "2002 · SERIES", "monk"], ["Only Murders", "2021 · SERIES", "murders"]] },
+        space: { prompt: '“Give me intelligent science fiction that messes with my head.”', title: "Reality, reconsidered", items: [["Arrival", "2016 · MOVIE", "arrival"], ["Severance", "2022 · SERIES", "severance"], ["Dark", "2017 · SERIES", "dark"]] },
+        comedy: { prompt: '“Recommend some genuinely great comfort-watch comedies.”', title: "One more episode", items: [["Community", "2009 · SERIES", "community"], ["The Good Place", "2016 · SERIES", "goodplace"], ["Ted Lasso", "2020 · SERIES", "tedlasso"]] }
+      };
+
+      const buttons = document.querySelectorAll<HTMLButtonElement>("[data-scene]");
+      const prompt = document.getElementById("prompt-text");
+      const rowTitle = document.getElementById("catalog-title");
+      const posters = Array.from(document.querySelectorAll<HTMLElement>("[data-poster]"));
+      for (const button of buttons) {
+        button.addEventListener("click", () => {
+          const scene = scenes[button.dataset.scene ?? "mystery"];
+          if (!scene || !prompt || !rowTitle) return;
+          for (const choice of buttons) { const selected = choice === button; choice.classList.toggle("selected", selected); choice.setAttribute("aria-pressed", String(selected)); }
+          prompt.textContent = scene.prompt;
+          rowTitle.textContent = scene.title;
+          posters.forEach((poster, index) => {
+            const [title, meta, art] = scene.items[index];
+            poster.className = `poster poster-${art}`;
+            const nameElement = poster.querySelector("[data-poster-title]");
+            const metaElement = poster.querySelector("[data-poster-meta]");
+            if (nameElement) nameElement.textContent = title;
+            if (metaElement) metaElement.textContent = meta;
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

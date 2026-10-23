@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CLI docs">
-  <rect width="64" height="64" rx="14" fill="#0f172a"/>
-  <path d="M18 22l10 10-10 10" fill="none" stroke="#f8fafc" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 43h15" fill="none" stroke="#f8fafc" stroke-width="5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Stremio Catalog MCP">
+  <rect width="64" height="64" rx="14" fill="#101512"/>
+  <rect x="13" y="13" width="38" height="10" rx="3" fill="#d5f77c"/>
+  <rect x="13" y="27" width="38" height="10" rx="3" fill="#d5f77c" opacity=".66"/>
+  <rect x="13" y="41" width="26" height="10" rx="3" fill="#d5f77c" opacity=".34"/>
 </svg>

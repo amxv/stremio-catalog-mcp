@@ -4,8 +4,8 @@ export const siteConfig = {
   description:
     "Publish curated movie and TV collections from an MCP agent straight to native Stremio catalogs without changing your streaming addons.",
   repoUrl: "https://github.com/amxv/stremio-catalog-mcp",
-  accentColor: "#0369a1",
-  accentColorDark: "#38bdf8",
+  accentColor: "#446c36",
+  accentColorDark: "#d5f77c",
   footerSections: [
     {
       title: "Made for your Stremio screen",
