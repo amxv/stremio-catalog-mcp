@@ -23,7 +23,7 @@ For transferring keys, session tokens, and protected files to agents, we recomme
 
 ## Automated setup (optional)
 
-**Inspect the [bootstrap source](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/main.go) first.** Related files: [Redis REST checks](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/redis.go), [Upstash provisioning](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/upstash.go), and [Agent Browser login](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/browser.go). These GitHub links are public-facing URLs, but the repository is still private until its owner publishes it.
+**Inspect the [public bootstrap source](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/main.go) first.** Related files: [Redis REST checks](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/redis.go), [Upstash provisioning](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/upstash.go), and [Agent Browser login](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/browser.go).
 
 ### Option A · Automatically provision Free Upstash
 

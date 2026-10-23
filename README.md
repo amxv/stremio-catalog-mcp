@@ -46,4 +46,4 @@ One deployment manages **one Stremio account**. Keep all generated keys, Redis t
 
 Go 1.26+, Bun for the optional docs site, and a Vercel account for hosting. Run `make check` to test the Go server; `make docs-check` and `make docs-build` validate the Astro/ZueDocs site. Credentials aren't required for tests.
 
-Licensed under [Apache-2.0](LICENSE). Designed for self-hosting and a future public release.
+Open source under [Apache-2.0](LICENSE). Self-host it on your own Vercel and Redis accounts.
