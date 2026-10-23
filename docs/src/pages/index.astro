@@ -1,5 +1,7 @@
 ---
 import "../styles/landing.css";
+import ArrowUpRight from "../components/ArrowUpRight.astro";
+import Asterisk from "../components/Asterisk.astro";
 
 const examples = [
   { index: "01", label: "Psych", year: "2006", kind: "SERIES", art: "psych" },
@@ -10,7 +12,7 @@ const examples = [
 const steps = [
   { number: "01", type: "A CONVERSATION", title: "Ask a better question.", detail: "Describe what you're in the mood for. ChatGPT can research, compare, remember context, and choose the titles, just as it does today.", example: "“Some clever, funny murder mysteries. Nothing too dark.”" },
   { number: "02", type: "ONE TOOL CALL", title: "Send the good stuff.", detail: "The MCP receives a row name and the titles you picked. It resolves their IMDb IDs and creates a native Stremio catalog, without making recommendations itself.", example: "catalog_put({ name, type, items })" },
-  { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Your catalog appears alongside your other rows. Open any title and the metadata and streaming add-ons you already love take over.", example: "Murder mysteries with a wink  ↗" }
+  { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Your catalog appears alongside your other rows. Open any title and the metadata and streaming add-ons you already love take over.", example: "Murder mysteries with a wink  →" }
 ];
 
 const features = [
@@ -48,7 +50,7 @@ const features = [
         <nav class="nav" aria-label="Main navigation">
           <a href="#how-it-works">How it works</a>
           <a href="#why-it-exists">The idea</a>
-          <a href="/docs">Documentation <span aria-hidden="true">↗</span></a>
+          <a href="/docs">Documentation <ArrowUpRight /></a>
           <a href="https://github.com/amxv/stremio-catalog-mcp" aria-label="Source repository on GitHub" title="Source repository" target="_blank" rel="noopener noreferrer" class="github-link"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .9A11.1 11.1 0 0 0 8.49 22.54c.56.1.76-.24.76-.54v-2.12c-3.09.67-3.74-1.32-3.74-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.7.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.7-1.49-2.47-.28-5.06-1.23-5.06-5.49 0-1.22.43-2.21 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.15A10.6 10.6 0 0 1 12 6.42c.94 0 1.88.13 2.77.38 2.11-1.45 3.05-1.15 3.05-1.15.61 1.54.23 2.68.11 2.96.72.79 1.15 1.78 1.15 3 0 4.27-2.59 5.21-5.07 5.49.4.35.75 1.03.75 2.08V22c0 .3.2.65.76.54A11.1 11.1 0 0 0 12 .9Z"/></svg></a>
         </nav>
       </header>
@@ -59,34 +61,34 @@ const features = [
             <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> THE MISSING LINK IN MOVIE NIGHT <span class="eyebrow-counter">/ 001</span></p>
             <h1 id="hero-title">From a good question to a <em>great watch.</em></h1>
             <p class="lead">You already ask ChatGPT what to watch. Now send those recommendations straight to your Stremio home screen, as native, editable catalog rows.</p>
-            <div class="hero-actions"><a class="btn btn-primary" href="/docs/quickstart">Make your first catalog <span aria-hidden="true">↗</span></a><a class="btn btn-outline" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
-            <p class="hero-footnote"><span aria-hidden="true">✳</span> <strong>Your agent recommends.</strong> Your Stremio plays. We just connect them.</p>
+            <div class="hero-actions"><a class="btn btn-primary" href="/docs/quickstart">Make your first catalog <ArrowUpRight /></a><a class="btn btn-outline" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
+            <p class="hero-footnote"><Asterisk /> <strong>Your agent recommends.</strong> Your Stremio plays. We just connect them.</p>
           </div>
 
           <div class="hero-art" aria-label="Illustration of an AI conversation sending a catalog row to Stremio">
             <div class="orbit orbit-a" aria-hidden="true"></div><div class="orbit orbit-b" aria-hidden="true"></div>
-            <div class="chat-bubble"><div class="chat-star" aria-hidden="true">✳</div><div><span class="chat-label">YOU, TO YOUR AGENT</span><p id="prompt-text">“Show me witty murder mysteries with an IMDb rating above 7.”</p></div><span class="chat-arrow" aria-hidden="true">↗</span></div>
-            <div class="transfer" aria-hidden="true"><span class="dash"></span><span class="transfer-pill">catalog_put <span>↗</span></span><span class="dash"></span></div>
+            <div class="chat-bubble"><div class="chat-star" aria-hidden="true"><Asterisk /></div><div><span class="chat-label">YOU, TO YOUR AGENT</span><p id="prompt-text">“Show me witty murder mysteries with an IMDb rating above 7.”</p></div><span class="chat-arrow" aria-hidden="true"><ArrowUpRight /></span></div>
+            <div class="transfer" aria-hidden="true"><span class="dash"></span><span class="transfer-pill">catalog_put <ArrowUpRight /></span><span class="dash"></span></div>
             <div class="tv-frame"><div class="tv-screen"><div class="tv-top"><span class="tv-wordmark"><span aria-hidden="true">◈</span> stremio</span><span>DISCOVER</span><span class="tv-avatar" aria-hidden="true">S</span></div><div class="tv-main"><div class="tv-kicker"><i></i> YOUR CUSTOM CATALOG</div><div class="tv-title-row"><h2 id="catalog-title">Murder mysteries with a wink</h2><span>SEE ALL <span aria-hidden="true">→</span></span></div><div class="poster-grid">
               {examples.map((item) => (<div class={`poster poster-${item.art}`} data-poster><div class="poster-pattern" aria-hidden="true"><i></i><i></i><i></i></div><span class="poster-no">{item.index} / 03</span><span class="poster-caption"><strong data-poster-title>{item.label}</strong><small data-poster-meta>{item.year} · {item.kind}</small></span></div>))}
-            </div><div class="tv-status"><span><i></i> YOUR EXISTING STREAMING ADD-ONS</span><span>READY TO WATCH <span aria-hidden="true">↗</span></span></div></div></div></div><div class="tv-foot" aria-hidden="true"></div>
+            </div><div class="tv-status"><span><i></i> YOUR EXISTING STREAMING ADD-ONS</span><span>READY TO WATCH <ArrowUpRight /></span></div></div></div></div><div class="tv-foot" aria-hidden="true"></div>
             <div class="demo-picker"><span>TRY ANOTHER REQUEST</span><div class="demo-options"><button type="button" class="selected" data-scene="mystery" aria-pressed="true">Witty mysteries</button><button type="button" data-scene="space" aria-pressed="false">Mind-bending sci-fi</button><button type="button" data-scene="comedy" aria-pressed="false">Comfort comedy</button></div></div>
             <p class="illustration-label">ILLUSTRATIVE PREVIEW · BUILT WITH THE REAL STREMIO CATALOG FORMAT</p>
           </div>
         </section>
 
-        <div class="marquee" aria-label="Your agent recommends. Stremio plays. No new streaming app."><div aria-hidden="true"><span>THE RECOMMENDATION IS THE EASY PART</span><b>✳</b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b>✳</b><span>THE RECOMMENDATION IS THE EASY PART</span><b>✳</b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b>✳</b></div></div>
+        <div class="marquee" aria-label="Your agent recommends. Stremio plays. No new streaming app."><div aria-hidden="true"><span>THE RECOMMENDATION IS THE EASY PART</span><b><Asterisk /></b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b><Asterisk /></b><span>THE RECOMMENDATION IS THE EASY PART</span><b><Asterisk /></b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b><Asterisk /></b></div></div>
 
-        <section class="section how" id="how-it-works"><div class="section-intro"><div><p class="eyebrow eyebrow-light">/ THE THREE ACTS</p><h2>A little less browsing.<br /><em>A lot more watching.</em></h2></div><p>From conversation to couch, in three tiny steps. The intelligence stays with your agent. The watching stays with Stremio.</p></div><div class="steps">{steps.map((step) => (<article class="step"><div class="step-top"><span>{step.number} / 03</span><span>{step.type}</span></div><div class="step-symbol" aria-hidden="true">{step.number === "01" ? "✳" : step.number === "02" ? "↗" : "▶"}</div><h3>{step.title}</h3><p>{step.detail}</p><div class="step-example">{step.example}</div></article>))}</div></section>
+        <section class="section how" id="how-it-works"><div class="section-intro"><div><p class="eyebrow eyebrow-light">/ THE THREE ACTS</p><h2>A little less browsing.<br /><em>A lot more watching.</em></h2></div><p>From conversation to couch, in three tiny steps. The intelligence stays with your agent. The watching stays with Stremio.</p></div><div class="steps">{steps.map((step) => (<article class="step"><div class="step-top"><span>{step.number} / 03</span><span>{step.type}</span></div><div class="step-symbol" aria-hidden="true">{step.number === "01" ? <Asterisk /> : step.number === "02" ? <ArrowUpRight /> : <svg viewBox="0 0 24 24" class="glyph-play" fill="currentColor" aria-hidden="true"><path d="M6 3.5c0-.8.9-1.2 1.5-.8l13 8.5c.6.4.6 1.3 0 1.7l-13 8.5c-.6.4-1.5 0-1.5-.8z" /></svg>}</div><h3>{step.title}</h3><p>{step.detail}</p><div class="step-example">{step.example}</div></article>))}</div></section>
 
         <section class="statement" id="why-it-exists"><p class="eyebrow eyebrow-dark">/ NOT ANOTHER RECOMMENDATION ENGINE</p><h2>You've already found <em>the good stuff.</em><br /><span>Now give it somewhere to live.</span></h2><div class="statement-bottom"><p>ChatGPT knows the conversation. Cinemeta knows the movie. Your streaming add-ons know how to play it. <strong>This MCP is the missing handoff.</strong></p><div class="statement-seal" aria-hidden="true"><span>BUILT FOR</span><strong>THE<br />COUCH</strong><span>NOT THE FEED</span></div></div></section>
 
-        <section class="section feature-section"><div class="section-intro feature-intro"><div><p class="eyebrow eyebrow-light">/ SMALL BRIDGE, BIG DIFFERENCE</p><h2>Make your screen<br /><em>feel like yours.</em></h2></div><p>Dynamic from day one, with no reinvention of the recommendation stack and no interference with how you stream.</p></div><div class="features">{features.map((feature) => (<article class="feature"><span class="feature-id">{feature.id} /</span><h3>{feature.title}</h3><p>{feature.copy}</p><span class="feature-arrow" aria-hidden="true">↗</span></article>))}</div></section>
+        <section class="section feature-section"><div class="section-intro feature-intro"><div><p class="eyebrow eyebrow-light">/ SMALL BRIDGE, BIG DIFFERENCE</p><h2>Make your screen<br /><em>feel like yours.</em></h2></div><p>Dynamic from day one, with no reinvention of the recommendation stack and no interference with how you stream.</p></div><div class="features">{features.map((feature) => (<article class="feature"><span class="feature-id">{feature.id} /</span><h3>{feature.title}</h3><p>{feature.copy}</p><span class="feature-arrow" aria-hidden="true"><ArrowUpRight /></span></article>))}</div></section>
 
-        <section class="cta-band"><span class="cta-decoration" aria-hidden="true">✳</span><div><p class="eyebrow eyebrow-dark">/ READY FOR MOVIE NIGHT?</p><h2>Talk about it.<br /><em>Then watch it.</em></h2><p>One Go server, one Stremio add-on, one very satisfying shortcut from recommendation to remote control.</p></div><a href="/docs/quickstart" class="cta-link">Read the quickstart <span aria-hidden="true">↗</span></a></section>
+        <section class="cta-band"><Asterisk class="cta-decoration" /><div><p class="eyebrow eyebrow-dark">/ READY FOR MOVIE NIGHT?</p><h2>Talk about it.<br /><em>Then watch it.</em></h2><p>One Go server, one Stremio add-on, one very satisfying shortcut from recommendation to remote control.</p></div><a href="/docs/quickstart" class="cta-link">Read the quickstart <ArrowUpRight /></a></section>
       </main>
 
-      <footer class="footer"><a class="footer-brand" href="/">stremio<span>/</span>catalog<span class="footer-mcp">mcp</span></a><span>FROM CHAT TO COUCH. NO EXTRA CHANNELS.</span><div><a href="/docs">Docs ↗</a><a href="/docs/tools">MCP tools ↗</a><a href="https://github.com/amxv/stremio-catalog-mcp" target="_blank" rel="noopener noreferrer">Source ↗</a></div></footer>
+      <footer class="footer"><a class="footer-brand" href="/">stremio<span>/</span>catalog<span class="footer-mcp">mcp</span></a><span>FROM CHAT TO COUCH. NO EXTRA CHANNELS.</span><div><a href="/docs">Docs <ArrowUpRight /></a><a href="/docs/tools">MCP tools <ArrowUpRight /></a><a href="https://github.com/amxv/stremio-catalog-mcp" target="_blank" rel="noopener noreferrer">Source <ArrowUpRight /></a></div></footer>
     </div>
 
     <script>
