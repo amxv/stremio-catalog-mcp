@@ -83,6 +83,20 @@ func (rt Runtime) sync(ctx context.Context) SyncStatus {
 
 func makeServer() *mcp.Server { return serverFor(runtimeFromEnv()) }
 
+// catalogTool centralizes the MCP metadata contract. These annotations are
+// advisory discovery hints, not authorization controls: catalog write tools
+// still modify state and require the configured MCP API key.
+func catalogTool(name, description string) *mcp.Tool {
+	return &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+			// Do not set OpenWorldHint on any tool.
+		},
+	}
+}
+
 type RowResult struct {
 	Catalog catalog.Row `json:"catalog"`
 	Status  SyncStatus  `json:"status"`
@@ -91,13 +105,13 @@ type RowResult struct {
 func serverFor(rt Runtime) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.1.0"}, nil)
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_list", Description: "List your Stremio catalog rows, IDs, and titles. Call before editing existing rows."},
+	mcp.AddTool(s, catalogTool("catalog_list", "List your Stremio catalog rows, IDs, and titles. Call before editing existing rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, catalog.State, error) {
 			state, err := rt.Manager.Read(ctx)
 			return nil, state, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_put", Description: "Create, rename, reorder, replace, or append to a Stremio catalog row. Supply movie/series and IMDb IDs or unambiguous titles. IDs stay stable across edits. Use mode=replace and items=[] to clear. Existing playback addons supply streams."},
+	mcp.AddTool(s, catalogTool("catalog_put", "Create, rename, reorder, replace, or append to a Stremio catalog row. Supply movie/series and IMDb IDs or unambiguous titles. IDs stay stable across edits. Use mode=replace and items=[] to clear. Existing playback addons supply streams."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in catalog.UpsertInput) (*mcp.CallToolResult, RowResult, error) {
 			row, err := rt.Manager.Upsert(ctx, in)
 			if err != nil {
@@ -109,7 +123,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, RowResult{Catalog: row, Status: rt.sync(ctx)}, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_remove_titles", Description: "Remove individual titles by IMDb ID from an existing row, preserving other titles and their order."},
+	mcp.AddTool(s, catalogTool("catalog_remove_titles", "Remove individual titles by IMDb ID from an existing row, preserving other titles and their order."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 			RowID string   `json:"row_id" jsonschema:"Existing row ID"`
 			IDs   []string `json:"ids" jsonschema:"IMDb tt... IDs to remove"`
@@ -121,7 +135,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_clear", Description: "Remove all titles from one row while keeping its name, ID and position on the Stremio home screen."},
+	mcp.AddTool(s, catalogTool("catalog_clear", "Remove all titles from one row while keeping its name, ID and position on the Stremio home screen."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 			RowID string `json:"row_id" jsonschema:"Row ID to empty"`
 		}) (*mcp.CallToolResult, RowResult, error) {
@@ -132,7 +146,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_delete", Description: "Permanently remove a catalog row and its contents from our add-on manifest. Does not touch other addons."},
+	mcp.AddTool(s, catalogTool("catalog_delete", "Permanently remove a catalog row and its contents from our add-on manifest. Does not touch other addons."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 			RowID string `json:"row_id" jsonschema:"Row ID to delete"`
 		}) (*mcp.CallToolResult, SyncStatus, error) {
@@ -142,12 +156,12 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, rt.sync(ctx), nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_sync", Description: "Retry synchronizing our catalog manifest to your linked Stremio account. Preserves all installed streaming addons and Cinemeta."},
+	mcp.AddTool(s, catalogTool("catalog_sync", "Retry synchronizing our catalog manifest to your linked Stremio account. Preserves all installed streaming addons and Cinemeta."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, SyncStatus, error) {
 			return nil, rt.sync(ctx), nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "catalog_install_url", Description: "Get your private Stremio add-on manifest URL to install once in Stremio. Treat this URL as a secret."},
+	mcp.AddTool(s, catalogTool("catalog_install_url", "Get your private Stremio add-on manifest URL to install once in Stremio. Treat this URL as a secret."),
 		func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, struct {
 			URL string `json:"url"`
 		}, error) {

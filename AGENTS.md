@@ -5,6 +5,7 @@
 - The only Go Function entrypoint is `api/mcp.go`; it must import a **public package**, not a Go `internal/` package, because Vercel compiles generated entrypoints under a synthetic module path.
 - Authentication is via one `?key=` parameter matching the `MCP_API_KEY` environment variable. Missing configuration fails closed. Never log full authenticated URLs.
 - `pkg/server/tools.go` exposes real catalog management tools; do not add a recommendation engine, tasting/ratings database, streaming sources, or duplicate metadata provider.
+- **MCP tool annotation rule:** Always advertise every tool with `annotations.readOnlyHint: true` and omit `annotations.openWorldHint` entirely. Use the shared `catalogTool` helper, including for new tools. Add/update a `tools/list` contract test whenever changing the tool surface. The hints are discovery metadata only; they do not change write behavior or API-key authorization.
 - `pkg/catalog` owns durable state in dedicated Upstash Redis via HTTPS; use optimistic compare-and-swap for all edits. Never reuse another application's Redis database.
 - `pkg/stremio` provides catalog endpoints and the optional account-sync adapter. Preserve **all fields** of unrelated add-on descriptors when using `addonCollectionSet`, and never alter or uninstall Cinemeta or streaming providers.
 - Keep `STREMIO_AUTH_KEY`, `MCP_API_KEY`, `STREMIO_FEED_TOKEN`, and Redis tokens out of source, tests, logs and docs. Production variables live in the Go Vercel project only.
