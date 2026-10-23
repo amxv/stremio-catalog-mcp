@@ -1,51 +1,61 @@
 ---
-title: Architecture
-description: How the MCP tools, durable state, Stremio protocol and account adapter fit together.
-order: 2
-category: Design
-summary: Cinemeta reuse, dynamic manifests and safe account synchronization.
+title: Architecture & security
+description: Catalog protocol, account syncing, persistence, and the limits of a single-account deployment.
+order: 5
+category: Reference
+summary: How this small bridge works without replacing Cinemeta or streaming providers.
 ---
 
-## Separation of responsibilities
+## One small bridge
 
 ```text
-Agent / ChatGPT                  Stremio Android TV
-   |                                  |
-   | POST /mcp?key=...                | GET /stremio/:feed/vN/manifest.json
-   v                                  | GET /stremio/:feed/vN/catalog/series/:row.json
-pkg/server  (Go MCP SDK)              v
-   |                             pkg/stremio
-   v                                  |
-pkg/catalog  (rows + ID matching) -----+
-   |                                  |
-   v                                  v
-Upstash Redis REST               IMDb IDs + poster previews
-                                     |
-                            existing Cinemeta / stream addons
+ChatGPT / your MCP agent ── POST /mcp?key=... ──┐
+                                                 │
+                                           Vercel Go API
+                                                 │
+                                          Upstash Redis
+                                                 │
+Stremio on the TV ── GET /stremio/<feed>/... ───┘
+                  ↳ Existing Cinemeta + streaming add-ons
 ```
 
-**The recommendation system is your agent.** This service stores only catalog rows and items. It performs no model inference and requires no AI API credentials.
+The assistant does all the **research and recommendations** using its normal tools. This service just persists and serves the resulting catalog rows. No LLM runs inside the server.
 
-## Cinemeta and playback compatibility
+It advertises Stremio's **catalog** resource, not `meta`, `stream`, or `subtitles`. Each item uses a standard IMDb `tt...` ID with `movie` or `series` type, so Stremio's existing Cinemeta metadata and streaming providers can handle the same titles. Cinemeta search is used only to resolve supplied titles and posters, rejecting ambiguous matches.
 
-Each catalog entry uses Stremio's standard `tt...` IMDb identifier and `movie` or `series` type. Cinemeta resolves existing metadata and episode structures from that identity. Previously installed stream providers continue to receive exactly the IDs they already support. This add-on intentionally advertises **only the `catalog` resource**, never `stream`, `subtitles`, or `meta`.
+## Updating titles versus rows
 
-The backend can accept an IMDb ID directly or search Cinemeta for an **exact** title/year match before storing the item. Ambiguous matches are rejected rather than guessed.
+Rows have stable IDs, names, type, position, and ordered titles. The Go MCP endpoint validates tool calls and uses Redis compare-and-swap, so concurrent updates don't silently overwrite each other. It supports up to 24 rows and 100 titles per row.
 
-## Dynamic rows
+**Editing titles** changes the live catalog endpoint. **Creating, renaming, reordering, or deleting rows** also changes the add-on manifest. The Stremio app may retain a previously installed manifest until the account add-on collection syncs or is reinstalled.
 
-Manifest declarations contain each row's stable ID, display name, and content type. `/catalog/{type}/{id}.json` serves its current ordered list. Editing titles changes the response immediately, subject to Stremio's cache. Creating, deleting, or renaming a row also changes the manifest, which Stremio clients may have cached from installation.
+For automatic sync, an optional `STREMIO_AUTH_KEY` lets the server call Stremio's `addonCollectionGet` and `addonCollectionSet`. The latter **replaces the account's entire add-on collection**, so the adapter:
 
-For full dynamic row support, an optional account adapter uses `addonCollectionGet` then `addonCollectionSet` to merge our new descriptor into the account's installed add-on collection. **The set operation replaces the entire collection**, so our adapter preserves unrelated descriptors, flags and order. Each manifest update receives a revisioned URL so clients have a better chance of recognizing changed declarations.
+1. Fetches the current collection and preserves every unrelated descriptor, including Cinemeta and streaming add-ons.
+2. Serializes this service's sync requests with a Redis lease and checks for changes from other clients before writing.
+3. Saves a private Redis backup before every account replacement (up to 10 recent snapshots), aborting the write if the backup fails.
+4. Replaces only its own manifest, then reads back the collection to verify synchronization.
 
-Adding, replacing, clearing, or removing **titles inside an existing row** needs no account-collection write. Those changes are served directly from the catalog endpoint. We reserve account sync for new/deleted/renamed/reordered row declarations and explicit `catalog_sync` calls, reducing unnecessary calls to Stremio's account API.
+This is **not** a transaction across multiple Stremio devices. Changes made simultaneously from a different Stremio client can still race. The account API is used by Stremio clients but is **not a stable, versioned third-party contract**, so compatibility can change.
 
-**Caveat:** This Stremio account API is used by Stremio's own clients but isn't a separately supported third-party contract. Its updates aren't transactional with other devices; external simultaneous edits can race. We serialize our own syncs with an Upstash lease, reread the live account state, and verify the result, but cross-client conflicts cannot be completely eliminated. Never give this service blanket ability to remove unrelated add-ons.
+## Security model
 
-Before every account-collection replacement, the Go service stores a timestamped copy of the previous descriptors in a private Redis backup list (last 10 snapshots). If the backup cannot be saved, the account write is refused. These records may contain sensitive installed add-on URLs, so they are never exposed as MCP responses or through the public catalog feed.
+- `MCP_API_KEY`: private write-capable URL credential (`?key=`). Never share it publicly.
+- `STREMIO_FEED_TOKEN`: separate read-only feed token embedded in Stremio's catalog URL; anyone with that URL can read the catalog contents, not modify them through MCP.
+- Upstash REST credentials: private Vercel production variables; durable state isn't tied to a Vercel function instance.
+- `STREMIO_AUTH_KEY`: sensitive Stremio session, used only for the account API and never returned through MCP tools.
+- Private account backups: may include other installed add-ons' configured URLs, so they aren't exposed through the feed or MCP.
 
-## Data and safety
+**Tool annotations aren't permissions.** Some clients will see `readOnlyHint: true`, but several tools really do edit or delete rows. Treat these as write-capable operations and rely on the actual API key and the user's approval policy, not metadata hints.
 
-`pkg/catalog` stores the row document with optimistic compare-and-swap using Redis Lua `EVAL`. Parallel agent writes cannot silently overwrite each other. A separate short Redis lock serializes account syncs across Vercel instances. HTTP endpoints reject missing secrets; the read-only Stremio feed has a different token from the write-capable MCP endpoint.
+Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Scheduled recommendations, watch-history imports, playback controls, and multi-tenant account management are outside this service's scope.
 
-Only the row document is stored in Redis. The Stremio account token, if provided, is a Vercel environment variable and is **not** serialized into catalog state. The repository is Apache-2.0 licensed with credentials/configuration separated from code for eventual public release.
+## Code map and upstream references
+
+- `api/mcp.go`: Vercel Go Function for MCP and Stremio routes.
+- `pkg/server`: official Go MCP SDK, key validation, and tools.
+- `pkg/catalog`: validation, Cinemeta lookup, ordered rows and Redis storage.
+- `pkg/stremio`: native add-on protocol and the account-sync adapter.
+- `cmd/setup`: self-hosting bootstrap with Free Upstash provisioning and a secure clipboard handoff.
+
+Read the [Stremio add-on protocol](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md), [Cinemeta documentation](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/advanced.md#understanding-cinemeta), and [Stremio API client](https://github.com/Stremio/stremio-api-client) for upstream contracts.

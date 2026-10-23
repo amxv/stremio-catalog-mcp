@@ -1,48 +1,67 @@
 ---
 title: Quickstart
-description: Connect an MCP client, install the private add-on, and publish your first row.
+description: Have your AI agent self-host the service, then add it to ChatGPT in a few clicks.
 order: 1
 category: Start
-summary: From a chat recommendation to a native Stremio catalog.
+summary: Set up with an agent and start sending recommendations to Stremio.
 ---
 
-## 1. Deploy the Go service
+This is a **self-hosted MCP server**, not a shared public recommendation service. Your agent can handle most of the setup; you handle account sign-ins and the final ChatGPT connection. It uses your own Vercel, Upstash, and Stremio accounts.
 
-Provision a small durable Upstash Redis database, then deploy the repository root as a Vercel Go Function. Set the five required environment variables described in [Deployment](/docs/deployment). The Stremio account session key is optional but required for automatic new-row synchronization.
+## 1. Ask your agent to set it up
 
-The service never needs an OpenAI API key. Your MCP client provides all the recommendations.
+Fork or clone [Stremio Catalog MCP](https://github.com/amxv/stremio-catalog-mcp) and give your coding agent this instruction:
 
-## 2. Connect your MCP client
+> Set up this repository for my Stremio account. Follow the [self-hosting instructions](/docs/deployment), use the included Go setup helper, and deploy to my Vercel account with a dedicated Free Upstash Redis database. Ask me to sign in or provide secrets securely when needed. Verify the deployment, link my Stremio session for dynamic rows, and copy the **full MCP URL** to my clipboard. Don't post tokens to chat, commit secrets, or enable paid services.
 
-Connect the private Streamable HTTP URL:
+The agent can preview the plan and then run the bootstrap once you approve:
+
+```bash
+go run ./cmd/setup --project my-stremio-catalog
+go run ./cmd/setup --apply --project my-stremio-catalog
+```
+
+The helper creates or reuses the Vercel project, provisions Free Redis, sets production secrets, deploys the Go service, and copies the URL. It supports secure files and noninteractive agent operation; see [Self-hosting](/docs/deployment) for details.
+
+## 2. Do the few human-only steps
+
+Your agent may need you to:
+
+- Sign in to **Vercel** and **Upstash**, then securely supply an Upstash Developer API key.
+- Sign in to **[Stremio Web](https://web.stremio.com/)** and provide a Stremio **session key**, not your password, through a private prompt. This enables automatic creation and renaming of rows across your signed-in devices.
+- Approve any cloud resources before your agent creates them. The setup helper requests a Free Redis plan and never automatically upgrades to paid.
+
+The full MCP URL looks like this:
 
 ```text
-https://your-api-host/mcp?key=<your-MCP_API_KEY>
+https://YOUR-VERCEL-PROJECT.vercel.app/mcp?key=YOUR_PRIVATE_KEY
 ```
 
-Use your actual secret only in the MCP client connection settings. The Go endpoint rejects unauthenticated requests.
+The `key` value is generated for your deployment. **Do not use the public documentation website URL.** If you need to copy your private URL again, have your agent run:
 
-## 3. Install once in Stremio
-
-Call `catalog_install_url` and open its URL in Stremio's add-on installation dialog. Sign into the same Stremio account on your TV. The URL is private, so do not post it publicly.
-
-If `STREMIO_AUTH_KEY` is configured, the server can also install or upgrade its own add-on automatically using Stremio's account collection API.
-
-## 4. Publish from a chat
-
-Ask your agent to recommend titles and send them to Stremio. It can call `catalog_put`:
-
-```json
-{
-  "name": "Murder Mysteries with Comedy",
-  "type": "series",
-  "items": [
-    { "title": "Psych", "year": 2006 },
-    { "title": "Monk", "year": 2002 }
-  ]
-}
+```bash
+go run ./cmd/setup --copy-url
 ```
 
-The service resolves names to IMDb IDs via Cinemeta, stores the row, and returns its stable ID. See [MCP tools](/docs/tools) for more operations. Your existing streaming add-ons handle playback when you open an item.
+The helper puts the URL directly on your clipboard without printing the secret.
 
-For newly named rows, Stremio may need an app refresh or restart after account synchronization.
+## 3. Add the MCP in ChatGPT
+
+This is the part you do yourself:
+
+1. Open ChatGPT **Plugins**.
+2. Click **Create custom MCP server**.
+3. Paste the full MCP URL from your clipboard, including `?key=...`.
+4. Select **No authentication**, choose a name (for example, *Stremio Catalog*), and click **Add as plugin**.
+
+Select *No authentication* because the URL already carries an API key; a separate OAuth sign-in is not needed. **The URL is still a secret.** UI labels may vary slightly by ChatGPT version.
+
+## 4. Send your first recommendations
+
+Try asking ChatGPT:
+
+> Find six excellent mind-bending sci-fi TV shows and send them to Stremio as a new catalog called *Sci-Fi Worth Watching*.
+
+Open Stremio on your TV using the same account. Your new row should appear when Stremio refreshes its add-ons; restarting the app sometimes helps. Existing streaming add-ons handle playback.
+
+Next: [things to try](/docs/using-catalogs) · [MCP tools](/docs/tools)

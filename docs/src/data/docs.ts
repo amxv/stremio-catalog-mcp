@@ -8,12 +8,12 @@ export const siteConfig = {
   accentColorDark: "#d5f77c",
   footerSections: [
     {
-      title: "Made for your Stremio screen",
-      text: "Dynamic named rows, Cinemeta-compatible IDs, and existing streaming addons left untouched."
+      title: "From chat to couch",
+      text: "An agent-led setup, your own hosted MCP server, and catalog rows you can change by chatting."
     },
     {
-      title: "Minimal by design",
-      text: "Go MCP, native catalog protocol, Vercel deployment, and a small durable row store. No recommendation engine."
+      title: "Self-hosted by default",
+      text: "Go, Vercel, a dedicated Upstash Redis database, and the Stremio addons you already use."
     },
     {
       title: "Repository",
@@ -24,7 +24,7 @@ export const siteConfig = {
   ]
 } as const;
 
-export const docCategories = ["Start", "Tools", "Design", "Operations"] as const;
+export const docCategories = ["Start", "Guides", "Reference"] as const;
 
 export const primaryNav = [
   { href: "/docs", label: "Docs" },

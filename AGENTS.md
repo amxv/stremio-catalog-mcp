@@ -13,6 +13,7 @@
 - `make check` runs Go tests and vet. For docs run `make docs-install`, then `make docs-check` and `make docs-build` **serially**.
 - Root deployment goes to one Vercel project. ZueDocs lives entirely under `docs/`, designed for a separate project with Root Directory `docs`.
 - This repository is initially private, but design code and examples for a future Apache-2.0 public release. Do not hardcode user-specific domains, IDs, credentials or account data.
+- When asked to self-host on someone's behalf, follow the public Quickstart and `go run ./cmd/setup` helper rather than inventing a separate deployment procedure. Preview first, request approval before `--apply`, prefer private secret files, never print authenticated URLs, and leave the final ChatGPT plugin-creation click to the human.
 
 ### Docs deployment
 

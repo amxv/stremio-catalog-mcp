@@ -2,7 +2,10 @@ module github.com/amxv/stremio-catalog-mcp
 
 go 1.26
 
-require github.com/modelcontextprotocol/go-sdk v1.8.0
+require (
+	github.com/modelcontextprotocol/go-sdk v1.8.0
+	golang.org/x/term v0.40.0
+)
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect

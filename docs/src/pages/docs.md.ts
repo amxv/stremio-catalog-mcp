@@ -7,7 +7,11 @@ export async function GET() {
   const lines = [
     `# ${siteConfig.name} Docs`,
     "",
-    "This is the raw markdown index for the documentation routes.",
+    "The source of truth for setting up and using Stremio Catalog MCP.",
+    "",
+    "If you are an AI coding agent setting up this service for a human, start with [Quickstart](/docs/quickstart.md), then follow [Self-hosting reference](/docs/deployment.md).",
+    "",
+    "The human must authorize account sign-ins and cloud resource creation, provide secrets privately, and finish ChatGPT's plugin-creation UI.",
     ""
   ];
 

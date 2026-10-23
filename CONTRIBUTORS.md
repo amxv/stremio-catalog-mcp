@@ -1,7 +1,9 @@
-# Contributing to Go MCP Template
+# Contributing to Stremio Catalog MCP
 
-This project provides a reusable Go/Vercel/Streamable HTTP MCP baseline. Make small, provider-agnostic improvements that are useful to future server projects.
+This is a **catalog bridge**, not a recommendation engine or streaming provider. Keep the server small, self-hostable, and compatible with existing Stremio add-ons.
 
-Run `make check` for Go changes and `make docs-check` then `make docs-build` for docs changes (serially). Keep API examples deterministic and safe to invoke without external accounts.
+Start with the [documentation website](https://stremio-catalog-mcp.ashray.xyz/docs). For Go changes run `make check` and `go test -race ./...`. For documentation run `make docs-check` and `make docs-build` sequentially.
 
-Changes pushed to `main` deploy in each project created from the template. No GitHub releases, CLI wrappers, npm distribution, or tagged releases are part of this template.
+Tests must not require live credentials or modify a real Stremio account. The setup helper has mocked Upstash and Vercel tests; extend them when changing provisioning behavior. Do not commit `.env` files, `.local-setup` receipts, private manifest URLs, or any account session.
+
+Follow [AGENTS.md](AGENTS.md) for repository conventions. Documentation improvements should stay approachable for humans while giving coding agents concrete setup and troubleshooting instructions.

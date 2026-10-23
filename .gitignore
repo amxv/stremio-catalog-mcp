@@ -1,24 +1,15 @@
-# Build outputs
-/dist
-# Bun/Astro docs
+# Go/Astro build outputs
+/dist/
 /docs/node_modules/
-
-# macOS
-.DS_Store
-
-# Astro docs
 /docs/.astro/
 /docs/dist/
 /docs/.vercel/
-
-# Local Vercel API project
 /.vercel/
 
-# Secrets
-.env
-.env.*
-!.env.example
-.vercel
-.env*.local
+# Private per-instance setup receipt (generated MCP and feed keys)
+/.local-setup/
+
+# Secrets, local auth, and macOS metadata
 .env*
 !.env.example
+.DS_Store

@@ -1,93 +1,45 @@
 # Stremio Catalog MCP
 
-**Send curated movie and TV recommendations from your AI assistant straight to Stremio.**
+**Your AI recommends. Stremio plays.** This lightweight [Model Context Protocol](https://modelcontextprotocol.io/) server lets ChatGPT or another MCP assistant publish movie and TV recommendations directly to named rows on your Stremio home screen.
 
-This is a small, catalog-only remote MCP server and Stremio add-on. Your assistant researches and selects titles using its own tools; this service creates and manages home-screen rows. It does **not** call a language model, collect taste profiles, provide video streams, or replace Cinemeta. Existing streaming add-ons continue to provide playback through the same IMDb IDs.
+**[Website](https://stremio-catalog-mcp.ashray.xyz/) · [Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) · [Self-hosting guide](https://stremio-catalog-mcp.ashray.xyz/docs/deployment) · [MCP tools](https://stremio-catalog-mcp.ashray.xyz/docs/tools)**
 
-> **Status:** private, single-account foundation, organized for eventual open-source and multi-account support. Stremio's account collection API is not a separately versioned public API and may change.
+## What it does
 
-## Features
+Ask your assistant to find something to watch, then send the results to Stremio. It can create, rename, reorder, refresh, clear, and delete catalog rows, and add or remove individual titles. Existing Cinemeta metadata and streaming add-ons keep working; this service supplies **catalogs only**, never streams or its own recommendations.
 
-- Create **movie or series** rows with your own names, using IMDb IDs or unambiguous titles resolved by Cinemeta.
-- Append, deduplicate, replace and remove selected titles; rename, reorder or clear existing rows.
-- Delete a row entirely, preserving every other installed Stremio add-on.
-- Serve native Stremio manifests and catalog feeds with Cinemeta-compatible IDs.
-- Optionally synchronize row changes into your Stremio account so names and new rows appear on signed-in devices.
-- Run as a single Vercel Go Function with durable catalog storage in Upstash Redis REST.
+## Let your agent set it up
 
-## MCP tools
+Fork or clone this repository and give your coding agent this instruction:
 
-| Tool | Operation |
-| --- | --- |
-| `catalog_list` | Get row IDs, names, types, order, and item IDs. |
-| `catalog_put` | Create, rename, move, replace, or append to a row. |
-| `catalog_remove_titles` | Remove selected IMDb IDs from a row. |
-| `catalog_clear` | Empty a row without deleting its name or ID. |
-| `catalog_delete` | Remove an entire row. |
-| `catalog_sync` | Retry syncing rows into the Stremio account. |
-| `catalog_install_url` | Return the private URL for one-time installation. |
+> Self-host this Stremio Catalog MCP for me. Follow the [agent-led Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart). Deploy the Go API to my Vercel account, create a dedicated Free Upstash Redis database, securely connect my Stremio account, verify the endpoints, and copy the full authenticated MCP URL to my clipboard. Ask me only for required sign-ins, secret approvals, and the final ChatGPT plugin step. Do not print credentials or enable paid services.
 
-Example `catalog_put` call:
+The included Go helper automates most of the provisioning:
 
-```json
-{
-  "name": "Whodunits with Comedy",
-  "type": "series",
-  "items": [
-    { "title": "Psych", "year": 2006 },
-    { "title": "Monk", "year": 2002 },
-    { "title": "Only Murders in the Building", "year": 2021 }
-  ]
-}
+```bash
+go run ./cmd/setup --project my-stremio-catalog  # Preview, no changes
+go run ./cmd/setup --apply --project my-stremio-catalog
 ```
 
-On subsequent calls, pass the returned `id` with `mode: "append"` (default) or `mode: "replace"`. An empty replacement clears the row. To move a row, pass `position` (zero-based). Movie and series items live in separate rows, as required by Stremio's catalog schema.
+The helper guides you through secure credentials, provisions Free Redis, configures and deploys Vercel, and copies the MCP URL without printing its secret. Agents can use protected `--upstash-email-file`, `--upstash-key-file`, and `--stremio-key-file` arguments with `--yes` after human approval. Run `go run ./cmd/setup --copy-url` to copy your saved URL again.
 
-## Deployment
+### Add to ChatGPT
 
-Built from [amxv/go-mcp-template](https://github.com/amxv/go-mcp-template). Deploy the repository root as a Vercel Go Function, and `docs/` as a separate Astro/ZueDocs Vercel project.
+Once your agent has copied the URL: **Plugins → Create custom MCP server → No authentication → enter a name → Add as plugin.** Paste the full URL including `?key=...`. *No authentication* means ChatGPT won't initiate a separate OAuth flow; the URL still contains a private API key.
 
-### Private environment variables (API project only)
+Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row called Sci-Fi Worth Watching.”** Refresh Stremio if the new row hasn't appeared yet.
 
-| Variable | Purpose |
-| --- | --- |
-| `MCP_API_KEY` | Long random secret authenticating remote MCP requests. |
-| `PUBLIC_BASE_URL` | HTTPS origin, e.g. `https://catalog.example.com`. |
-| `STREMIO_FEED_TOKEN` | Independent URL-safe secret for the Stremio add-on feed. |
-| `UPSTASH_REDIS_REST_URL` | Upstash Redis HTTPS REST endpoint. |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis REST authentication token. |
-| `STREMIO_AUTH_KEY` | **Optional:** Stremio session token, enabling automatic row install/rename/delete across signed-in devices. |
+## What runs where
 
-Never reuse the MCP key as the feed key. Neither belongs in source control or public docs. Never send a Stremio account password to this service. Without `STREMIO_AUTH_KEY`, MCP writes are saved and existing rows update, but newly declared rows require manually reinstalling the latest manifest.
+- **Go + Vercel:** stateless Streamable HTTP MCP endpoint and standard Stremio catalog endpoints.
+- **Upstash Redis REST:** durable, ordered rows and synchronization safeguards.
+- **Cinemeta:** IMDb ID lookup, with playback handled by your existing add-ons.
+- **Stremio account API:** optional account linking to add and rename rows automatically; it is an unversioned integration and can require an app restart.
 
-**MCP:** `https://your-host/mcp?key=<MCP_API_KEY>`.
+One deployment manages **one Stremio account**. Keep all generated keys, Redis tokens, and the Stremio session private. See the website's [technical reference](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for security and limitations.
 
-**Stremio:** `https://your-host/stremio/<STREMIO_FEED_TOKEN>/manifest.json` (or use the `catalog_install_url` tool). The separate feed token is necessarily embedded in the add-on URL because Stremio does not send custom authorization headers.
+## Develop
 
-Stremio account sync uses its own `addonCollectionGet` and `addonCollectionSet` methods. Each update reads the latest collection, replaces **only our own descriptor**, and verifies the new manifest. Unrelated entries, including Cinemeta and playback providers, are preserved. Versioned URLs help clients notice newly created or renamed rows. A TV app restart may still be necessary; the Stremio protocol has no real-time push API.
+Go 1.26+, Bun for the optional docs site, and a Vercel account for hosting. Run `make check` to test the Go server; `make docs-check` and `make docs-build` validate the Astro/ZueDocs site. Credentials aren't required for tests.
 
-Before the whole-collection Stremio write, a private Redis backup preserves the previous installed-addon descriptors (last 10). If backup storage fails, no account write is attempted. These backups can contain private configured streaming addon URLs and are not accessible from MCP tools.
-
-## Local development
-
-Go 1.26+ and Bun (for documentation) are required:
-
-```sh
-make check
-make docs-install
-make docs-check
-make docs-build
-```
-
-The Go tests run without credentials or a live account. Production requires durable Redis; it never silently stores catalogs in process memory. HTTP uses stateless JSON-RPC Streamable HTTP and fail-closed key validation.
-
-## Design and references
-
-- [Stremio add-on protocol](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md): manifests and catalogs.
-- [Cinemeta compatibility](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/advanced.md#understanding-cinemeta): reuse IMDb IDs with other providers.
-- [Stremio account API client](https://github.com/Stremio/stremio-api-client): `addonCollectionGet` / `addonCollectionSet`.
-- [Stremio core API requests](https://github.com/Stremio/stremio-core/blob/main/src/types/api/request.rs): account request shapes.
-
-`pkg/catalog` owns row state, optimistic concurrency, and title resolution; `pkg/stremio` owns the catalog protocol and account adapter; `pkg/server` defines the MCP surface; `api/` is the Vercel function. A future multi-user version can add tenant isolation and account authorization without replacing these packages.
-
-Licensed under Apache-2.0. The repository is currently private and can be made public without a code/license migration.
+Licensed under [Apache-2.0](LICENSE). Designed for self-hosting and a future public release.
