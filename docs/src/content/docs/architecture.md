@@ -13,7 +13,7 @@ ChatGPT / your MCP agent ── POST /mcp?key=... ──┐
                                                  │
                                            Vercel Go API
                                                  │
-                                          Upstash Redis
+                                  Upstash-compatible Redis REST
                                                  │
 Stremio on the TV ── GET /stremio/<feed>/... ───┘
                   ↳ Existing Cinemeta + streaming add-ons
@@ -42,7 +42,7 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 
 - `MCP_API_KEY`: private write-capable URL credential (`?key=`). Never share it publicly.
 - `STREMIO_FEED_TOKEN`: separate read-only feed token embedded in Stremio's catalog URL; anyone with that URL can read the catalog contents, not modify them through MCP.
-- Upstash REST credentials: private Vercel production variables; durable state isn't tied to a Vercel function instance.
+- Redis REST credentials: private Vercel production variables; the server accepts existing Upstash-compatible HTTPS Redis REST endpoints, not arbitrary Redis TCP URLs. Durable state isn't tied to a Vercel function instance.
 - `STREMIO_AUTH_KEY`: sensitive Stremio session, used only for the account API and never returned through MCP tools.
 - Private account backups: may include other installed add-ons' configured URLs, so they aren't exposed through the feed or MCP.
 
@@ -56,6 +56,6 @@ Each deployment currently serves **one Stremio account**. For multiple people, d
 - `pkg/server`: official Go MCP SDK, key validation, and tools.
 - `pkg/catalog`: validation, Cinemeta lookup, ordered rows and Redis storage.
 - `pkg/stremio`: native add-on protocol and the account-sync adapter.
-- `cmd/setup`: self-hosting bootstrap with Free Upstash provisioning and a secure clipboard handoff.
+- `cmd/setup`: optional self-hosting bootstrap with Free Upstash provisioning **or existing Redis REST credentials**, Agent Browser sign-in, and a secure clipboard handoff.
 
 Read the [Stremio add-on protocol](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md), [Cinemeta documentation](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/advanced.md#understanding-cinemeta), and [Stremio API client](https://github.com/Stremio/stremio-api-client) for upstream contracts.

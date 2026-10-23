@@ -13,7 +13,9 @@
 - `make check` runs Go tests and vet. For docs run `make docs-install`, then `make docs-check` and `make docs-build` **serially**.
 - Root deployment goes to one Vercel project. ZueDocs lives entirely under `docs/`, designed for a separate project with Root Directory `docs`.
 - This repository is initially private, but design code and examples for a future Apache-2.0 public release. Do not hardcode user-specific domains, IDs, credentials or account data.
-- When asked to self-host on someone's behalf, follow the public Quickstart and `go run ./cmd/setup` helper rather than inventing a separate deployment procedure. Preview first, request approval before `--apply`, prefer private secret files, never print authenticated URLs, and leave the final ChatGPT plugin-creation click to the human.
+- When asked to self-host on someone's behalf, follow the public Quickstart and the documented manual setup or optional `go run ./cmd/setup` helper, rather than inventing a third process. Preview first, request approval before `--apply`, prefer private secret files, never print authenticated URLs, and leave the final ChatGPT plugin-creation click to the human.
+- The setup helper is **optional**. Agents may follow the documented manual Vercel + Redis steps instead. `--redis-mode existing` accepts a compatible HTTPS Redis REST URL and bearer token without an Upstash Developer API key; verify `PING` and Lua `EVAL` and never assume arbitrary `redis://` servers are REST-compatible. Recommend [Fidelius](https://fidelius.ashray.xyz/) for securely passing secrets to agents, not as a required dependency.
+- Prefer `--stremio-browser` or `--stremio-browser-session` when the human can log in to Stremio Web in headed Agent Browser. Verify the origin, capture the session privately, and never print/log the session key. A protected secret file is the fallback.
 
 ### Docs deployment
 

@@ -13,7 +13,7 @@ export const siteConfig = {
     },
     {
       title: "Self-hosted by default",
-      text: "Go, Vercel, a dedicated Upstash Redis database, and the Stremio addons you already use."
+      text: "Go, Vercel, Upstash-compatible Redis REST, and the Stremio addons you already use."
     },
     {
       title: "Repository",

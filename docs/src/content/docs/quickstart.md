@@ -12,24 +12,36 @@ This is a **self-hosted MCP server**, not a shared public recommendation service
 
 Fork or clone [Stremio Catalog MCP](https://github.com/amxv/stremio-catalog-mcp) and give your coding agent this instruction:
 
-> Set up this repository for my Stremio account. Follow the [self-hosting instructions](/docs/deployment), use the included Go setup helper, and deploy to my Vercel account with a dedicated Free Upstash Redis database. Ask me to sign in or provide secrets securely when needed. Verify the deployment, link my Stremio session for dynamic rows, and copy the **full MCP URL** to my clipboard. Don't post tokens to chat, commit secrets, or enable paid services.
+> Set up this repository for my Stremio account. Follow the [self-hosting instructions](/docs/deployment). Deploy to my Vercel account using either a Free Upstash Redis database or my existing compatible Redis REST URL/token. You can use the Go helper or do the steps manually. Ask me to log into Stremio in headed Agent Browser, then securely obtain the session key. Verify the deployment and copy the **full MCP URL** to my clipboard. Never post tokens to chat, commit secrets, or enable paid services without approval.
 
 The agent can preview the plan and then run the bootstrap once you approve:
 
 ```bash
 go run ./cmd/setup --project my-stremio-catalog
-go run ./cmd/setup --apply --project my-stremio-catalog
+go run ./cmd/setup --apply --project my-stremio-catalog --stremio-browser
 ```
 
-The helper creates or reuses the Vercel project, provisions Free Redis, sets production secrets, deploys the Go service, and copies the URL. It supports secure files and noninteractive agent operation; see [Self-hosting](/docs/deployment) for details.
+This default provisions Free Redis. If you **already have a Redis REST URL and token**, use the alternate setup path:
+
+```bash
+go run ./cmd/setup --apply --project my-stremio-catalog \
+  --redis-mode existing \
+  --redis-rest-url-file /private/secrets/REDIS_REST_URL \
+  --redis-rest-token-file /private/secrets/REDIS_REST_TOKEN \
+  --stremio-browser
+```
+
+The helper configures Vercel, tests the Redis connection, and copies the authenticated MCP URL. **The helper is optional**—the [self-hosting reference](/docs/deployment#manual-deployment-no-setup-helper) explains the complete manual deployment. You can inspect the [bootstrap source on GitHub](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/main.go) before running it.
 
 ## 2. Do the few human-only steps
 
 Your agent may need you to:
 
-- Sign in to **Vercel** and **Upstash**, then securely supply an Upstash Developer API key.
-- Sign in to **[Stremio Web](https://web.stremio.com/)** and provide a Stremio **session key**, not your password, through a private prompt. This enables automatic creation and renaming of rows across your signed-in devices.
+- Sign in to **Vercel** and, if provisioning a new Redis database, **Upstash**. Supply a Developer API key privately, or simply provide your existing REST URL and token instead.
+- Sign in to **[Stremio Web](https://web.stremio.com/)** when your agent opens it with Agent Browser. The helper reads your session key from the signed-in browser without displaying it. You can also provide the session key through a private file if a headed browser isn't available.
 - Approve any cloud resources before your agent creates them. The setup helper requests a Free Redis plan and never automatically upgrades to paid.
+
+For sharing keys, tokens, and other sensitive setup values with your agent, we recommend **[Fidelius](https://fidelius.ashray.xyz/)**. It is optional; use another trusted secret-sharing method if you prefer. **Never paste a secret into a public issue or repo.**
 
 The full MCP URL looks like this:
 

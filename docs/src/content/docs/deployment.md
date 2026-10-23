@@ -1,114 +1,169 @@
 ---
 title: Self-hosting reference
-description: Agent-oriented setup steps for a private Go MCP service on your own Vercel and Upstash accounts.
+description: Deploy manually with Vercel and Redis, or automate it with the optional Go setup helper.
 order: 4
 category: Reference
-summary: Provision resources, handle keys safely, and deploy the Go server.
+summary: Two Redis options, full manual deployment, safe secrets, and Stremio login.
 ---
 
-This reference is written primarily for a **coding agent operating on the human's behalf**. Start with the [Quickstart](/docs/quickstart); use this page for exact setup commands, requirements, and recovery.
+This is written for **an agent setting up Stremio Catalog MCP for a human**. Hosting needs one Go deployment on Vercel and a Redis REST endpoint. The [project website](https://stremio-catalog-mcp.ashray.xyz/) already hosts the docs—you don't have to deploy those.
 
-## What you need
+Choose either the **optional setup helper** or the **fully manual deployment** below. Both produce the same private ChatGPT MCP URL.
 
-- A fork or clone of [this repository](https://github.com/amxv/stremio-catalog-mcp).
-- **Go 1.26+**, the **Vercel CLI**, and authenticated access to the human's Vercel account (`vercel login`). GitHub CLI is useful for managing the fork.
-- An **Upstash account** and a **Developer API email/key** with permission to create one Free Redis database. Get these from the Upstash console's Developer API section. Do not request an Upstash password.
-- The human's **Stremio session key**, for automatic appearance of newly created, renamed, or removed rows. The human signs in to Stremio Web first.
+## Requirements
 
-One deployment is tied to **one Stremio account**. Give each human their own project, database, and secrets. This is not yet a multi-tenant hosted service.
+- Clone or fork the [GitHub repository](https://github.com/amxv/stremio-catalog-mcp). Use Go 1.26+ for the optional helper.
+- Sign into [Vercel](https://vercel.com/) and install its CLI (`vercel login`).
+- Choose a Redis service with an **Upstash-compatible HTTPS REST API**: JSON command arrays, bearer-token authentication, and Lua `EVAL`. A plain `redis://` or `rediss://` TCP URL is **not** compatible with this Go backend.
+- A Stremio account for automatic new-row synchronization. Headed [Agent Browser](https://github.com/vercel-labs/agent-browser) can simplify the human login.
 
-## Automatic setup (recommended)
+One deployment manages **one Stremio account**. Use a dedicated Redis database when practical. An existing database works if its other applications can safely share the keys that this service stores.
 
-From the repository root, **preview first**:
+For transferring keys, session tokens, and protected files to agents, we recommend [Fidelius](https://fidelius.ashray.xyz/). It is **optional**; any trusted secret-sharing mechanism works. Never paste keys into a public issue, repository, chat transcript, or command log.
+
+## Automated setup (optional)
+
+**Inspect the [bootstrap source](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/main.go) first.** Related files: [Redis REST checks](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/redis.go), [Upstash provisioning](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/upstash.go), and [Agent Browser login](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/browser.go). These GitHub links are public-facing URLs, but the repository is still private until its owner publishes it.
+
+### Option A · Automatically provision Free Upstash
+
+Give the agent an Upstash Developer API email/key through a secure broker. It can preview the plan and provision a dedicated **Free** Redis instance without upgrading to paid:
 
 ```bash
 go run ./cmd/setup --project my-stremio-catalog
+go run ./cmd/setup --apply --project my-stremio-catalog --stremio-browser
 ```
 
-With human approval, complete setup:
+`--stremio-browser` opens a headed Stremio Web window. The human logs in, then the helper reads the authenticated session **in memory**, validates it and sends it to Vercel without displaying the key. `--stremio-key-file` is the fallback.
+
+### Option B · Reuse an existing Redis REST URL and token
+
+**No Upstash Developer API key required.** The endpoint can be Upstash or another service implementing the same Redis HTTP protocol.
 
 ```bash
-go run ./cmd/setup --apply --project my-stremio-catalog
+go run ./cmd/setup --project my-stremio-catalog --redis-mode existing
+
+go run ./cmd/setup --apply --project my-stremio-catalog \
+  --redis-mode existing \
+  --redis-rest-url-file /private/secrets/REDIS_REST_URL \
+  --redis-rest-token-file /private/secrets/REDIS_REST_TOKEN \
+  --stremio-browser
 ```
 
-The agent should handle the process. The helper:
+The helper verifies `PING` and Lua `EVAL` using a temporary expiring key and does **not** touch existing catalog data. You may provide the endpoint using `--redis-rest-url https://redis.example` and the token through a protected file or `UPSTASH_REDIS_REST_TOKEN` environment variable.
 
-1. Creates or links the Vercel project, checking existing production configuration.
-2. Creates or reuses a **dedicated Free Upstash Redis** database (TLS enabled, eviction disabled, no paid fallback).
-3. Generates separate strong MCP-write and Stremio-feed tokens; stores a local owner-only recovery receipt and configures the Vercel production environment.
-4. Validates an optional Stremio session key; connects GitHub for future deploys when possible; deploys the Go API to Vercel.
-5. Copies `https://YOUR-API-ORIGIN/mcp?key=YOUR_PRIVATE_KEY` to the **local clipboard without displaying the key**.
+Both helper modes set Vercel environment variables, deploy the Go API, and copy the authenticated MCP URL to the local clipboard. For agent automation use `--yes` only **after human approval** and pass secrets via private files (`chmod 600`). Helpful options: `--scope` for Vercel teams, `--base-url` for a verified custom domain, `--stremio-browser-session` for an existing headed browser session, and `--no-git-connect`/`--no-deploy` for custom workflows.
 
-It is safe to rerun with the same project and recovery receipt. It avoids overwriting existing MCP/feed keys or accidentally creating duplicate Redis databases. It refuses paid plans. It does **not** set up another hosted docs site, since the official [website](https://stremio-catalog-mcp.ashray.xyz/) already provides the documentation.
+The recovery receipt `.local-setup/credentials.json` is owner-only and Git-ignored. Reruns reuse credentials instead of silently changing Redis instances or rotating keys. To copy the URL again: `go run ./cmd/setup --copy-url`. A remote agent needs an authorized local bridge to access the human's clipboard.
 
-### Noninteractive, agent-driven setup
+## Manual deployment (no setup helper)
 
-For agents with a secret broker such as Fidelius, prefer private temporary files. Never pass secrets in CLI arguments or print them to a chat, terminal transcript, commit, or log.
+Agents can do every step themselves with Vercel's CLI, ordinary Redis credentials, and a signed-in Stremio browser. There is no requirement to run the Go bootstrap.
+
+### 1 · Clone and prepare Redis
 
 ```bash
-go run ./cmd/setup \
-  --apply --yes \
-  --project my-stremio-catalog \
-  --upstash-email-file /private/secrets/UPSTASH_EMAIL \
-  --upstash-key-file /private/secrets/UPSTASH_API_KEY \
-  --stremio-key-file /private/secrets/STREMIO_AUTH_KEY
+git clone https://github.com/YOUR_ACCOUNT/stremio-catalog-mcp.git
+cd stremio-catalog-mcp
 ```
 
-Secret files must be owner-readable only (`chmod 600`). Run `--yes` only after the human expressly approves provisioning. The helper also accepts `UPSTASH_EMAIL`, `UPSTASH_API_KEY`, and `STREMIO_AUTH_KEY` in the current process environment if protected files aren't available. With no file/environment value, it uses a hidden terminal prompt when running interactively.
+Either create a Free database in [Upstash Console](https://console.upstash.com/) or reuse an existing Redis REST database. Collect its **HTTPS REST URL and bearer token** privately. The Developer API key is *only* needed for automatic provisioning, not here.
 
-The program saves only the generated MCP/feed connection keys in **`.local-setup/credentials.json`**, with owner-only permissions and Git ignore rules. It does **not** save the Upstash management key, Redis REST token, or Stremio session key there. Protect the receipt; Vercel production secrets may not be readable back later.
+If using a different provider, verify compatibility with Upstash-style Redis REST (`POST` with JSON command arrays), `PING`, `GET`, `SET`, `DEL`, `EVAL`, `LPUSH`, and `LTRIM`. Generic Redis TCP connections and incompatible vendor REST APIs require a separate adapter.
 
-### Finding a Stremio session key
+### 2 · Link the Go project to Vercel
 
-Ask the human to sign in to [web.stremio.com](https://web.stremio.com/). The current web app may expose the active session in its browser storage under `profile.auth.key`:
-
-```js
-JSON.parse(localStorage.getItem("profile") || "{}").auth?.key
-```
-
-This is a **sensitive account session**, not a public identifier. Don't paste it into chat or publish it. The agent should pass it directly to a private file or secure prompt for setup. Storage formats can change; if this no longer works, use Stremio's current account/session mechanism. Never ask for the human's Stremio password.
-
-Without a session key, you can still publish content and manually install the add-on URL. After connecting the MCP, ask your agent to call `catalog_install_url`; add that manifest URL through **Stremio → Add-ons**. Reinstall the updated manifest when row names or declarations change. **Automatic discovery of newly named rows won't work** until account sync is configured. This is why the session key is recommended for the full experience.
-
-### Clipboard handoff and ChatGPT
-
-The helper attempts to use `pbcopy` on macOS, Windows clipboard APIs, or `wl-copy` / `xclip` / `xsel` on Linux. It must run where the **human's desktop clipboard** is available. A cloud agent or remote container cannot automatically copy to the human's Mac without a trusted local bridge.
-
-If needed, rerun this from the same repository on the human's computer:
+From the repository root (not `docs/`):
 
 ```bash
-go run ./cmd/setup --copy-url
+vercel login
+vercel project add my-stremio-catalog
+vercel link --yes --project my-stremio-catalog
 ```
 
-Then the human opens **ChatGPT → Plugins → Create custom MCP server**, pastes the complete URL including `?key=`, selects **No authentication**, enters a name, and clicks **Add as plugin**. No authentication here means *no separate OAuth exchange*; the URL's API key still protects the server.
+Skip `project add` if you already have that project. Confirm **Root Directory `/`**, **Framework Preset Other**, and that the root `vercel.json` routes `/mcp` and `/stremio/*` to `api/mcp.go`. Connect your GitHub fork in Vercel (or use `vercel git connect` with its GitHub URL) if you want deployments on future pushes.
 
-## Variables and manual deployment
+Identify the project's actual, **verified HTTPS** production domain, often `https://my-stremio-catalog.vercel.app`. Don't assume every project slug gets that exact domain.
 
-The helper configures these Vercel **Production** variables in the API project:
+### 3 · Add private Vercel production variables
 
-| Name | Required | Description |
-| --- | --- | --- |
-| `MCP_API_KEY` | Yes | Private key for ChatGPT and other MCP clients. |
-| `STREMIO_FEED_TOKEN` | Yes | Separate private Stremio catalog URL token. |
-| `PUBLIC_BASE_URL` | Yes | HTTPS origin of the deployed Go API, with no trailing route. |
-| `UPSTASH_REDIS_REST_URL` | Yes | HTTPS endpoint of this project's Redis database. |
-| `UPSTASH_REDIS_REST_TOKEN` | Yes | Private Redis REST token. |
-| `STREMIO_AUTH_KEY` | Recommended | Account session enabling automatic manifest synchronization. |
+| Variable | Purpose |
+| --- | --- |
+| `MCP_API_KEY` | New random secret for MCP write access. |
+| `STREMIO_FEED_TOKEN` | Different random secret for Stremio catalog reads. |
+| `UPSTASH_REDIS_REST_URL` | Redis HTTPS REST endpoint. |
+| `UPSTASH_REDIS_REST_TOKEN` | Redis REST bearer token. |
+| `PUBLIC_BASE_URL` | Verified Vercel API HTTPS origin, not the docs domain. |
+| `STREMIO_AUTH_KEY` | Recommended Stremio session for adding/renaming/removing rows across devices. |
 
-To deploy **manually** instead, create a dedicated Free Redis database in the [Upstash Console](https://console.upstash.com/), import the repository to Vercel with **Root Directory `/`**, Framework **Other**, configure these variables as server-side secrets, then deploy the `main` branch. Use the root `vercel.json` with the `/mcp` and `/stremio/*` rewrites; do not host the API under `docs/`.
-
-For a custom domain, attach it to the **Go API project**, configure your DNS provider using Vercel's exact target, and set `PUBLIC_BASE_URL` to the verified `https://` origin. Redeploy so the updated variable is active. The docs domain is independent.
-
-## Validate and troubleshoot
+The agent can generate the **two independent 32-byte application keys** using `openssl rand -hex 32`, store them temporarily in owner-only files (or a password manager), and send private values to Vercel over **stdin**. For example:
 
 ```bash
-make check
+vercel env add UPSTASH_REDIS_REST_URL --environment production --sensitive --yes < /private/secrets/REDIS_REST_URL
+vercel env add UPSTASH_REDIS_REST_TOKEN --environment production --sensitive --yes < /private/secrets/REDIS_REST_TOKEN
+vercel env add MCP_API_KEY --environment production --sensitive --yes < /private/secrets/MCP_API_KEY
+vercel env add STREMIO_FEED_TOKEN --environment production --sensitive --yes < /private/secrets/STREMIO_FEED_TOKEN
+printf '%s' 'https://YOUR_VERIFIED_API_HOST' | vercel env add PUBLIC_BASE_URL --environment production --no-sensitive --yes
 ```
 
-Ask the agent to verify that a request to `/mcp` without `?key=` returns HTTP 401; the authenticated `tools/list` exposes seven tools; the private Stremio `manifest.json` has `resources: ["catalog"]`; and `catalog_list` reads the initial empty row store or saved rows.
+Generate and secure the files before those commands. `vercel env ls production` lets an agent see which variables already exist; **do not overwrite production secrets automatically**. Never use the Upstash REST token as the MCP key. Protect a recovery copy of the generated MCP key because production secrets may not be readable back later.
 
-Test one temporary row with `catalog_put`, then delete it with `catalog_delete`. Confirm the original Stremio add-ons stay installed. New rows may require refreshing or restarting the TV app because Stremio caches its manifest.
+### 4 · Connect Stremio via Agent Browser
 
-If the Free Upstash quota is exhausted, **stop** and ask the human how to proceed. Do not silently reuse another project's Redis or upgrade to a paid tier. If a rerun reports existing production keys but no `.local-setup` receipt, do not overwrite them: recover the receipt or deliberately migrate the instance with backup and explicit approval.
+This is human-assisted, not a password-scraping workflow:
 
-See [Architecture and security](/docs/architecture) for the underlying Stremio account API risks, backups, and data model.
+1. Agent runs `agent-browser --session stremio-setup --headed open https://web.stremio.com/`.
+2. Human signs in to Stremio Web normally.
+3. Agent confirms that the browser is at `https://web.stremio.com`, then reads `JSON.parse(localStorage.getItem('profile') || '{}').auth?.key` with Agent Browser's `eval`, **capturing the output privately instead of printing it in a tool transcript**.
+4. Agent passes that session key via stdin to `vercel env add STREMIO_AUTH_KEY --environment production --sensitive --yes`, then closes its temporary browser session.
+
+The [browser helper source](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/browser.go) demonstrates private extraction and origin verification. The session format might change with Stremio updates; a secure session-key file is the fallback. Never request the human's Stremio password.
+
+For a **fully manual, no-helper** flow, an agent can capture the Agent Browser result in its own local process and send it directly to Vercel without printing it. After the human has logged in to the named browser session:
+
+```python
+import json
+import subprocess
+
+script = """(() => {
+  if (location.origin !== 'https://web.stremio.com') return null;
+  return JSON.parse(localStorage.getItem('profile') || '{}').auth?.key || null;
+})()"""
+response = json.loads(subprocess.check_output([
+    'agent-browser', '--session', 'stremio-setup', '--json', 'eval', script
+]))
+assert response['success'] and response['data']['origin'].rstrip('/') == 'https://web.stremio.com'
+key = response['data']['result']
+assert isinstance(key, str) and len(key) >= 20
+subprocess.run([
+    'vercel', 'env', 'add', 'STREMIO_AUTH_KEY', '--environment', 'production',
+    '--sensitive', '--yes'
+], input=key.encode(), check=True)
+print('Stremio session securely configured in Vercel.')
+```
+
+Close the temporary Agent Browser session afterward. Do not output `response`, `key`, or full authenticated URLs to the agent's transcript.
+
+Without `STREMIO_AUTH_KEY`, individual existing catalog rows can still be updated, but new/renamed rows require reinstalling the add-on manifest manually in **Stremio → Add-ons**. The MCP's `catalog_install_url` tool returns that private URL.
+
+### 5 · Deploy and add the MCP to ChatGPT
+
+```bash
+vercel --prod --yes
+```
+
+Check the deployment is Ready and HTTPS is valid. Assemble the full private URL from the verified project domain and generated MCP key, then **copy it to the human's clipboard without printing it** (for example, `pbcopy`, `Set-Clipboard`, or `wl-copy`). Save it in the human's password manager if needed:
+
+```text
+https://YOUR_VERIFIED_API_HOST/mcp?key=YOUR_PRIVATE_MCP_KEY
+```
+
+The human opens **ChatGPT → Plugins → Create custom MCP server → No authentication → Name → Add as plugin** and pastes the entire URL. *No authentication* means no separate OAuth flow; the URL still contains a secret write key.
+
+## Verify and troubleshoot
+
+Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose seven tools. Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed.
+
+Stremio may cache both rows and manifests, so a refresh or restart can be necessary. The Stremio account API is not a stable public third-party interface; see [Architecture & security](/docs/architecture).
+
+If the Free Upstash quota is exhausted, choose the **existing Redis REST** option rather than silently upgrading. If the helper finds existing Vercel production keys without its local receipt, it refuses to overwrite them; use the manual procedure or recover the original credentials instead.

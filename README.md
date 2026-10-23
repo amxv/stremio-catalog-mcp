@@ -12,7 +12,7 @@ Ask your assistant to find something to watch, then send the results to Stremio.
 
 Fork or clone this repository and give your coding agent this instruction:
 
-> Self-host this Stremio Catalog MCP for me. Follow the [agent-led Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart). Deploy the Go API to my Vercel account, create a dedicated Free Upstash Redis database, securely connect my Stremio account, verify the endpoints, and copy the full authenticated MCP URL to my clipboard. Ask me only for required sign-ins, secret approvals, and the final ChatGPT plugin step. Do not print credentials or enable paid services.
+> Self-host this Stremio Catalog MCP for me. Follow the [agent-led Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart). Deploy the Go API to my Vercel account, use a Free Upstash Redis database **or an existing compatible Redis REST URL/token**, securely connect my Stremio account, verify the endpoints, and copy the full authenticated MCP URL to my clipboard. Ask me only for required sign-ins, secret approvals, and the final ChatGPT plugin step. Do not print credentials or enable paid services.
 
 The included Go helper automates most of the provisioning:
 
@@ -23,6 +23,10 @@ go run ./cmd/setup --apply --project my-stremio-catalog
 
 The helper guides you through secure credentials, provisions Free Redis, configures and deploys Vercel, and copies the MCP URL without printing its secret. Agents can use protected `--upstash-email-file`, `--upstash-key-file`, and `--stremio-key-file` arguments with `--yes` after human approval. Run `go run ./cmd/setup --copy-url` to copy your saved URL again.
 
+Already have Redis? Use `--redis-mode existing` with `--redis-rest-url-file` and `--redis-rest-token-file`. No Upstash Developer API key is required. To connect Stremio without manually handling its session key, add `--stremio-browser`: your agent opens Stremio Web, you log in, and it securely reads the signed-in session. [Fidelius](https://fidelius.ashray.xyz/) is a useful option for securely passing tokens and private files to agents.
+
+**The helper is optional.** The [self-hosting reference](https://stremio-catalog-mcp.ashray.xyz/docs/deployment) also walks through the entire manual Vercel + Redis setup. Review the [Go bootstrap source](https://github.com/amxv/stremio-catalog-mcp/blob/main/cmd/setup/main.go) before running it.
+
 ### Add to ChatGPT
 
 Once your agent has copied the URL: **Plugins → Create custom MCP server → No authentication → enter a name → Add as plugin.** Paste the full URL including `?key=...`. *No authentication* means ChatGPT won't initiate a separate OAuth flow; the URL still contains a private API key.
@@ -32,7 +36,7 @@ Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row c
 ## What runs where
 
 - **Go + Vercel:** stateless Streamable HTTP MCP endpoint and standard Stremio catalog endpoints.
-- **Upstash Redis REST:** durable, ordered rows and synchronization safeguards.
+- **Redis REST (Upstash-compatible):** durable, ordered rows and synchronization safeguards.
 - **Cinemeta:** IMDb ID lookup, with playback handled by your existing add-ons.
 - **Stremio account API:** optional account linking to add and rename rows automatically; it is an unversioned integration and can require an app restart.
 
