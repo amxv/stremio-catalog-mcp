@@ -5,47 +5,47 @@ import { primaryNav, siteConfig } from "../data/docs";
 
 const docs = (await getCollection("docs")).sort((a, b) => a.data.order - b.data.order);
 const capabilities = [
-  { title: "Real MCP from day one", body: "Two working sample tools demonstrate unstructured text and typed JSON output." },
-  { title: "Native Go", body: "Official MCP Go SDK with tiny handlers and straightforward Go tests." },
-  { title: "Serverless", body: "Stateless Streamable HTTP runs as a single Go Function on Vercel." },
-  { title: "Docs included", body: "A fully isolated Astro + ZueDocs site can deploy from the same GitHub repository." }
+  { title: "ChatGPT chooses", body: "Let your AI agent browse, research and pick titles. No competing recommendation system." },
+  { title: "Stremio displays", body: "Native movie and series rows populated with Cinemeta-compatible IMDb IDs." },
+  { title: "Edit everything", body: "Rename, reorder, append, replace, clear or remove titles and whole catalog rows." },
+  { title: "Streams stay yours", body: "No playback providers, metadata replacements, tracking databases or TV-side modifications." }
 ];
 ---
 
 <BaseLayout title={`${siteConfig.name} | ${siteConfig.strapline}`} description={siteConfig.description} siteConfig={siteConfig} primaryNav={primaryNav}>
   <section class="hero shell">
     <div class="hero__copy">
-      <p class="section-label">Go · MCP · Vercel</p>
-      <h1>Start with a server that already speaks MCP.</h1>
+      <p class="section-label">MCP → Stremio</p>
+      <h1>Send your picks straight to the big screen.</h1>
       <p class="hero__lede">
-        Build your next MCP service in Go without reimplementing HTTP transport,
-        JSON-RPC wiring, authentication or deployments. Replace the sample tools and ship.
+        Ask your AI assistant for movies or shows. It picks the titles and publishes
+        a new collection on your Stremio home screen, ready for your existing streaming addons.
       </p>
-      <p class="hero__annotation">No CLI, npm distribution, release tags, or persistent session store required.</p>
+      <p class="hero__annotation">No recommendation engine. No new TV app. Just native Stremio catalogs.</p>
       <div class="hero__actions">
         <a class="button button--solid" href="/docs/quickstart">Quickstart</a>
         <a class="button button--ghost" href="/docs/architecture">Architecture</a>
       </div>
     </div>
     <aside class="hero__panel">
-      <p class="hero__panel-label">Included MCP examples</p>
+      <p class="hero__panel-label">One conversation. One catalog.</p>
       <ul class="hero__signal-list">
-        <li><strong>echo_text</strong> — validated text input and text output.</li>
-        <li><strong>add_numbers</strong> — validated numeric input and structured JSON output.</li>
-        <li><strong>?key=</strong> — production API key authentication with fail-closed defaults.</li>
+        <li><strong>You:</strong> Find funny murder mysteries rated over 7 on IMDb.</li>
+        <li><strong>Assistant:</strong> Recommends and calls catalog_put.</li>
+        <li><strong>Stremio:</strong> Shows a named row of your selected series.</li>
       </ul>
       <div class="hero__terminal">
-        <span>api/mcp.go</span>
-        <span>pkg/server/tools.go</span>
-        <span>make check</span>
+        <span>{'catalog_put({ name, type, items })'}</span>
+        <span>catalog_list()</span>
+        <span>{'catalog_clear({ row_id })'}</span>
       </div>
     </aside>
   </section>
   <section class="shell section-grid">
     <div class="section-heading">
       <p class="section-label">Included infrastructure</p>
-      <h2>Spend your time on the tool behavior.</h2>
-      <p>Transport, deployment, tests, and docs are included. The samples are tiny enough to understand and replace.</p>
+      <h2>Your recommendations, in the right place.</h2>
+      <p>Stremio handles viewing. Cinemeta handles title metadata. Your agent handles recommendations. We handle the handoff.</p>
     </div>
     <div class="proof-grid">
       {capabilities.map((item) => (
@@ -56,7 +56,7 @@ const capabilities = [
   <section class="shell docs-teaser">
     <div class="section-heading">
       <p class="section-label">Guides</p>
-      <h2>From template to deployed MCP.</h2>
+      <h2>Build, deploy, and start curating.</h2>
     </div>
     <div class="docs-teaser__grid">
       {docs.map((entry) => (
@@ -69,6 +69,6 @@ const capabilities = [
     </div>
   </section>
   <section class="shell closing-note">
-    <p>A reusable foundation, not a framework. Keep the deployment simple and replace only what your tools need.</p>
+    <p>Apache-2.0 licensed Go service, designed for a future open-source release.</p>
   </section>
 </BaseLayout>

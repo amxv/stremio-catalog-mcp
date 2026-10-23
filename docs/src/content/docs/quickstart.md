@@ -1,41 +1,48 @@
 ---
 title: Quickstart
-description: Clone the Go MCP template, run its sample tools, and deploy it to Vercel.
+description: Connect an MCP client, install the private add-on, and publish your first row.
 order: 1
 category: Start
-summary: Template setup, sample tools, credentials, and local checks.
+summary: From a chat recommendation to a native Stremio catalog.
 ---
 
-## Create and clone
+## 1. Deploy the Go service
 
-Create a private repository using [Go MCP Template](https://github.com/amxv/go-mcp-template/generate), then clone it. Update the Go module path in `go.mod` and the import in `api/mcp.go`.
+Provision a small durable Upstash Redis database, then deploy the repository root as a Vercel Go Function. Set the five required environment variables described in [Deployment](/docs/deployment). The Stremio account session key is optional but required for automatic new-row synchronization.
 
-Run the backend checks:
+The service never needs an OpenAI API key. Your MCP client provides all the recommendations.
 
-```bash
-make check
-```
+## 2. Connect your MCP client
 
-The server uses the official Go MCP SDK. The implementation lives in `pkg/server/tools.go` and exposes **two runnable tools**:
-
-- `echo_text`: `{ "text": "hello" }` returns text `hello`.
-- `add_numbers`: `{ "a": 2, "b": 3 }` returns `{ "sum": 5 }` as structured MCP output.
-
-## Production endpoint
-
-Deploy the repository root to Vercel, selecting **Other** as the framework. Configure the Production secret `MCP_API_KEY` with a long randomly generated value.
+Connect the private Streamable HTTP URL:
 
 ```text
-https://your-domain.example/mcp?key=<your-private-key>
+https://your-api-host/mcp?key=<your-MCP_API_KEY>
 ```
 
-This is a **stateless Streamable HTTP** MCP server. You don't need a session database. The server denies all requests if `MCP_API_KEY` is missing. Treat the full URL as a secret; query keys can appear in proxy logs and copied URLs.
+Use your actual secret only in the MCP client connection settings. The Go endpoint rejects unauthenticated requests.
 
-## Local documentation
+## 3. Install once in Stremio
 
-```bash
-make docs-install
-make docs-dev
+Call `catalog_install_url` and open its URL in Stremio's add-on installation dialog. Sign into the same Stremio account on your TV. The URL is private, so do not post it publicly.
+
+If `STREMIO_AUTH_KEY` is configured, the server can also install or upgrade its own add-on automatically using Stremio's account collection API.
+
+## 4. Publish from a chat
+
+Ask your agent to recommend titles and send them to Stremio. It can call `catalog_put`:
+
+```json
+{
+  "name": "Murder Mysteries with Comedy",
+  "type": "series",
+  "items": [
+    { "title": "Psych", "year": 2006 },
+    { "title": "Monk", "year": 2002 }
+  ]
+}
 ```
 
-The bundled ZueDocs site lives entirely under `docs/` and can be deployed as a second Vercel project.
+The service resolves names to IMDb IDs via Cinemeta, stores the row, and returns its stable ID. See [MCP tools](/docs/tools) for more operations. Your existing streaming add-ons handle playback when you open an item.
+
+For newly named rows, Stremio may need an app refresh or restart after account synchronization.

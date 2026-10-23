@@ -1,40 +1,47 @@
 ---
 title: Architecture
-description: Understand the Go Function, auth middleware, stateless MCP transport and sample tools.
+description: How the MCP tools, durable state, Stremio protocol and account adapter fit together.
 order: 2
 category: Design
-summary: What to change when implementing a new MCP service.
+summary: Cinemeta reuse, dynamic manifests and safe account synchronization.
 ---
 
-## Request flow
+## Separation of responsibilities
 
 ```text
-ChatGPT or another MCP client
-       │
-       ▼ POST /mcp?key=...
-Vercel Go Function        api/mcp.go
-       │
-       ▼
-Authentication + HTTP    pkg/server/server.go
-       │
-       ▼
-Stateless MCP server     pkg/server/tools.go
-       ├─ echo_text
-       └─ add_numbers
+Agent / ChatGPT                  Stremio Android TV
+   |                                  |
+   | POST /mcp?key=...                | GET /stremio/:feed/vN/manifest.json
+   v                                  | GET /stremio/:feed/vN/catalog/series/:row.json
+pkg/server  (Go MCP SDK)              v
+   |                             pkg/stremio
+   v                                  |
+pkg/catalog  (rows + ID matching) -----+
+   |                                  |
+   v                                  v
+Upstash Redis REST               IMDb IDs + poster previews
+                                     |
+                            existing Cinemeta / stream addons
 ```
 
-The code uses the official `github.com/modelcontextprotocol/go-sdk/mcp` implementation. Streamable HTTP is **stateless** with JSON responses, so any Vercel function instance can handle any request.
+**The recommendation system is your agent.** This service stores only catalog rows and items. It performs no model inference and requires no AI API credentials.
 
-The `MCP_API_KEY` is loaded from the runtime environment and checked in constant time. Missing configuration returns HTTP 503; an absent or incorrect key returns HTTP 401. Responses include no-store and no-referrer headers.
+## Cinemeta and playback compatibility
 
-## Adding a tool
+Each catalog entry uses Stremio's standard `tt...` IMDb identifier and `movie` or `series` type. Cinemeta resolves existing metadata and episode structures from that identity. Previously installed stream providers continue to receive exactly the IDs they already support. This add-on intentionally advertises **only the `catalog` resource**, never `stream`, `subtitles`, or `meta`.
 
-In `pkg/server/tools.go`, use `mcp.AddTool` with a typed Go struct for input. The Go SDK generates a JSON Schema from the struct and validates arguments before calling your handler.
+The backend can accept an IMDb ID directly or search Cinemeta for an **exact** title/year match before storing the item. Ambiguous matches are rejected rather than guessed.
 
-`echo_text` demonstrates returning `mcp.TextContent`; `add_numbers` demonstrates returning a typed Go value that becomes `structuredContent` automatically.
+## Dynamic rows
 
-**Important for Vercel:** Go Functions compile under a generated handler package. Import application code from a public Go package such as `pkg/server`, not directly from a Go `internal/` package. The generated handler can't satisfy Go's internal-import restriction, even though a local Go build can.
+Manifest declarations contain each row's stable ID, display name, and content type. `/catalog/{type}/{id}.json` serves its current ordered list. Editing titles changes the response immediately, subject to Stremio's cache. Creating, deleting, or renaming a row also changes the manifest, which Stremio clients may have cached from installation.
 
-## Boundaries
+For full dynamic row support, an optional account adapter uses `addonCollectionGet` then `addonCollectionSet` to merge our new descriptor into the account's installed add-on collection. **The set operation replaces the entire collection**, so our adapter preserves unrelated descriptors, flags and order. Each manifest update receives a revisioned URL so clients have a better chance of recognizing changed declarations.
 
-Keep the entrypoint small, authentication separate, and real application logic in small Go packages. Don't expose new tools until they are implemented and covered by tests. Neither Redis nor CLI release machinery is necessary for the basic MCP transport.
+**Caveat:** This Stremio account API is used by Stremio's own clients but isn't a separately supported third-party contract. Its updates aren't transactional with other devices; external simultaneous edits can race. We serialize our own syncs with an Upstash lease, reread the live account state, and verify the result, but cross-client conflicts cannot be completely eliminated. Never give this service blanket ability to remove unrelated add-ons.
+
+## Data and safety
+
+`pkg/catalog` stores the row document with optimistic compare-and-swap using Redis Lua `EVAL`. Parallel agent writes cannot silently overwrite each other. A separate short Redis lock serializes account syncs across Vercel instances. HTTP endpoints reject missing secrets; the read-only Stremio feed has a different token from the write-capable MCP endpoint.
+
+Only the row document is stored in Redis. The Stremio account token, if provided, is a Vercel environment variable and is **not** serialized into catalog state. The repository is Apache-2.0 licensed with credentials/configuration separated from code for eventual public release.

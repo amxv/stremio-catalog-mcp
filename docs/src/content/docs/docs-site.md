@@ -1,18 +1,18 @@
 ---
 title: Documentation site
-description: Customize the bundled Astro/ZueDocs app for your new MCP project.
+description: Run or customize the documentation website.
 order: 4
 category: Operations
-summary: Docs navigation, Markdown content, and site deployment.
+summary: A standalone website with isolated docs CI and Vercel deployment.
 ---
 
-The ZueDocs application is self-contained in `docs/`. It can be built or deployed without installing or publishing a CLI.
+This documentation site uses Astro and ZueDocs in `docs/`. It can be built and deployed without access to the Go service or any credentials.
 
 ```bash
 make docs-install
 make docs-dev
 ```
 
-Write articles in `docs/src/content/docs/`, update branding/navigation in `docs/src/data/docs.ts`, and customize the landing page in `docs/src/pages/index.astro`. Run `make docs-check` then `make docs-build` **sequentially** before merging changes.
+Edit guides in `docs/src/content/docs/`, navigation in `docs/src/data/docs.ts`, and the homepage in `docs/src/pages/index.astro`. Run `make docs-check` then `make docs-build` **sequentially** before pushing.
 
-Create a separate Vercel project with Root Directory `docs` to serve the static site. Keep the MCP API key only in the API project, never in documentation build variables.
+Deploy to a separate Vercel project with Root Directory `docs`. The docs GitHub Action builds only on relevant changes and pushes the prebuilt site. Keep all real connection URLs, account keys, Redis tokens, and MCP secrets in the API project's private settings, never in docs build variables.

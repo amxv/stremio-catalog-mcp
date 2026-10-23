@@ -1,4 +1,4 @@
-module github.com/amxv/go-mcp-template
+module github.com/amxv/stremio-catalog-mcp
 
 go 1.26
 

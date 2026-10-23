@@ -1,30 +1,30 @@
 export const siteConfig = {
-  name: "Go MCP Template",
-  strapline: "A small Go MCP server for Vercel",
+  name: "Stremio Catalog MCP",
+  strapline: "Recommendations, right on your TV",
   description:
-    "A reusable Go MCP server template with stateless Streamable HTTP, API-key authentication, sample tools, Vercel deployment and ZueDocs.",
-  repoUrl: "https://github.com/amxv/go-mcp-template",
+    "Publish curated movie and TV collections from an MCP agent straight to native Stremio catalogs without changing your streaming addons.",
+  repoUrl: "https://github.com/amxv/stremio-catalog-mcp",
   accentColor: "#0369a1",
   accentColorDark: "#38bdf8",
   footerSections: [
     {
-      title: "Go MCP Template",
-      text: "A provider-agnostic Go MCP server with a tiny tool surface and dependable Vercel hosting."
+      title: "Made for your Stremio screen",
+      text: "Dynamic named rows, Cinemeta-compatible IDs, and existing streaming addons left untouched."
     },
     {
-      title: "What is included",
-      text: "Two runnable sample tools, stateless MCP HTTP, simple authentication, automated Go checks, and bundled ZueDocs."
+      title: "Minimal by design",
+      text: "Go MCP, native catalog protocol, Vercel deployment, and a small durable row store. No recommendation engine."
     },
     {
       title: "Repository",
       linkPrefix: "Source: ",
-      linkHref: "https://github.com/amxv/go-mcp-template",
-      linkLabel: "github.com/amxv/go-mcp-template"
+      linkHref: "https://github.com/amxv/stremio-catalog-mcp",
+      linkLabel: "github.com/amxv/stremio-catalog-mcp"
     }
   ]
 } as const;
 
-export const docCategories = ["Start", "Design", "Operations"] as const;
+export const docCategories = ["Start", "Tools", "Design", "Operations"] as const;
 
 export const primaryNav = [
   { href: "/docs", label: "Docs" },

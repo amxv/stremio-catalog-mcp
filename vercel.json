@@ -6,10 +6,11 @@
     }
   },
   "rewrites": [
-    {
-      "source": "/mcp",
-      "destination": "/api/mcp"
-    }
+    { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/stremio/:token/manifest.json", "destination": "/api/mcp?token=:token&resource=manifest" },
+    { "source": "/stremio/:token/catalog/:type/:id.json", "destination": "/api/mcp?token=:token&resource=catalog&type=:type&id=:id" },
+    { "source": "/stremio/:token/:version/manifest.json", "destination": "/api/mcp?token=:token&resource=manifest" },
+    { "source": "/stremio/:token/:version/catalog/:type/:id.json", "destination": "/api/mcp?token=:token&resource=catalog&type=:type&id=:id" }
   ],
   "git": {
     "deploymentEnabled": {

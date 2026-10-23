@@ -32,17 +32,18 @@ func TestMCPRejectsMissingAndInvalidKeys(t *testing.T) {
 	}
 }
 
-func TestMCPStatelessHandshakeAndSampleTools(t *testing.T) {
+func TestMCPStatelessHandshakeAndCatalogTools(t *testing.T) {
 	t.Setenv("MCP_API_KEY", "my-private-key")
+	t.Setenv("PUBLIC_BASE_URL", "https://example.com")
+	t.Setenv("STREMIO_FEED_TOKEN", "test-feed-token")
 	for _, test := range []struct {
 		name     string
 		body     string
 		contains string
 	}{
-		{"initialize", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`, `"name":"go-mcp-template"`},
-		{"tools/list", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, `"name":"echo_text"`},
-		{"echo", `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo_text","arguments":{"text":"hello"}}}`, `"text":"hello"`},
-		{"add", `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"add_numbers","arguments":{"a":2.5,"b":3}}}`, `"sum":5.5`},
+		{"initialize", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`, `"name":"stremio-catalog-mcp"`},
+		{"tools/list", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, `"name":"catalog_put"`},
+		{"install URL", `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"catalog_install_url","arguments":{}}}`, `"url":"https://example.com/stremio/test-feed-token/manifest.json"`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/mcp?key=my-private-key", strings.NewReader(test.body))
