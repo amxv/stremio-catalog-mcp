@@ -33,13 +33,12 @@ func TestMCPToolAnnotations(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Result.Tools) != 9 {
-		t.Fatalf("expected all 9 tools, received %d", len(response.Result.Tools))
+	if len(response.Result.Tools) != 4 {
+		t.Fatalf("expected exactly 4 tools, received %d", len(response.Result.Tools))
 	}
 	expected := map[string]bool{
-		"catalog_list": true, "catalog_put": true, "catalog_remove_titles": true,
-		"catalog_clear": true, "catalog_delete": true, "catalog_sync": true,
-		"catalog_install_url": true, "home_layout_get": true, "home_layout_update": true,
+		"catalogs_get": true, "catalogs_update": true,
+		"home_layout_get": true, "home_layout_update": true,
 	}
 	for _, tool := range response.Result.Tools {
 		if !expected[tool.Name] {
@@ -54,14 +53,20 @@ func TestMCPToolAnnotations(t *testing.T) {
 			if _, present := tool.Annotations["openWorldHint"]; present {
 				t.Fatalf("tool %q must omit openWorldHint, not set it to false", tool.Name)
 			}
-			if tool.Name == "home_layout_update" {
+			if tool.Name == "home_layout_update" || tool.Name == "catalogs_update" || tool.Name == "catalogs_get" {
 				var input struct {
 					Properties map[string]json.RawMessage `json:"properties"`
 				}
 				if err := json.Unmarshal(tool.InputSchema, &input); err != nil {
 					t.Fatalf("invalid home layout input schema: %v", err)
 				}
-				for _, field := range []string{"visibility", "row_moves", "addon_moves", "dry_run"} {
+				fields := []string{"visibility", "row_moves", "addon_moves", "dry_run"}
+				if tool.Name == "catalogs_update" {
+					fields = []string{"changes", "dry_run", "expected_revision", "request_id"}
+				} else if tool.Name == "catalogs_get" {
+					fields = []string{"row_id", "include_titles", "include_install_url"}
+				}
+				for _, field := range fields {
 					if len(input.Properties[field]) == 0 {
 						t.Errorf("home_layout_update schema missing %s", field)
 					}
@@ -109,8 +114,7 @@ func TestMCPStatelessHandshakeAndCatalogTools(t *testing.T) {
 		contains string
 	}{
 		{"initialize", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`, `"name":"stremio-catalog-mcp"`},
-		{"tools/list", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, `"name":"catalog_put"`},
-		{"install URL", `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"catalog_install_url","arguments":{}}}`, `"url":"https://example.com/stremio/test-feed-token/manifest.json"`},
+		{"tools/list", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, `"name":"catalogs_update"`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/mcp?key=my-private-key", strings.NewReader(test.body))

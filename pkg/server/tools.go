@@ -43,10 +43,6 @@ type SyncStatus struct {
 	Message string `json:"message"`
 }
 
-func contentOnlyStatus() SyncStatus {
-	return SyncStatus{Message: "Catalog titles saved; no account manifest update was necessary. Existing Stremio rows will fetch updated contents when refreshed."}
-}
-
 func (rt Runtime) sync(ctx context.Context) SyncStatus {
 	if rt.Account.AuthKey == "" {
 		return SyncStatus{Message: "Saved. Stremio account not linked; install the addon URL manually or configure STREMIO_AUTH_KEY to enable automatic row syncing."}
@@ -61,7 +57,7 @@ func (rt Runtime) sync(ctx context.Context) SyncStatus {
 			return SyncStatus{Message: "Saved but sync lock unavailable: " + err.Error()}
 		}
 		if !locked {
-			return SyncStatus{Message: "Saved; another account sync is running. Call catalog_sync again shortly."}
+		return SyncStatus{Message: "Saved; another account sync is running. Retry with catalogs_update using a sync action."}
 		}
 		defer func() {
 			releaseCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -99,81 +95,22 @@ func catalogTool(name, description string) *mcp.Tool {
 	}
 }
 
-type RowResult struct {
-	Catalog catalog.Row `json:"catalog"`
-	Status  SyncStatus  `json:"status"`
-}
-
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.2.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.3.0"}, nil)
 
-	mcp.AddTool(s, catalogTool("catalog_list", "List your Stremio catalog rows, IDs, and titles. Call before editing existing rows."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, catalog.State, error) {
-			state, err := rt.Manager.Read(ctx)
-			return nil, state, err
+	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. With no parameters return compact row summaries; pass row_id for one row's ordered titles including saved poster URLs, or include_titles=true for every row's titles. include_install_url=true returns the private addon URL only when explicitly requested. Use home_layout_get for third-party addon rows."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
+			result, err := rt.catalogsGet(ctx, input)
+			return nil, result, err
 		})
 
-	mcp.AddTool(s, catalogTool("catalog_put", "Create, rename, reorder, replace, or append to a Stremio catalog row. Supply movie/series and IMDb IDs or unambiguous titles. IDs stay stable across edits. Use mode=replace and items=[] to clear. Existing playback addons supply streams."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in catalog.UpsertInput) (*mcp.CallToolResult, RowResult, error) {
-			row, err := rt.Manager.Upsert(ctx, in)
-			if err != nil {
-				return nil, RowResult{}, err
-			}
-			if in.ID != "" && in.Name == "" && in.Position == nil {
-				return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
-			}
-			return nil, RowResult{Catalog: row, Status: rt.sync(ctx)}, nil
+	mcp.AddTool(s, catalogTool("catalogs_update", "Batch changes to custom catalog CONTENT: actions create (name, type, optional titles), edit (row_id plus name/add_titles/remove_title_ids/replace_titles/move_titles), delete (row_id), sync (retry Stremio account synchronization). replace_titles=[] explicitly clears a row; omit it to preserve titles. For row position or visibility use home_layout_update. Optional dry_run preview, expected_revision and request_id for safe retries. Returns changed rows with posters and separate save/sync status."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, input catalog.BatchInput) (*mcp.CallToolResult, CatalogsUpdateResult, error) {
+			result, err := rt.catalogsUpdate(ctx, input)
+			return nil, result, err
 		})
 
-	mcp.AddTool(s, catalogTool("catalog_remove_titles", "Remove individual titles by IMDb ID from an existing row, preserving other titles and their order."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
-			RowID string   `json:"row_id" jsonschema:"Existing row ID"`
-			IDs   []string `json:"ids" jsonschema:"IMDb tt... IDs to remove"`
-		}) (*mcp.CallToolResult, RowResult, error) {
-			row, err := rt.Manager.RemoveItems(ctx, in.RowID, in.IDs)
-			if err != nil {
-				return nil, RowResult{}, err
-			}
-			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
-		})
-
-	mcp.AddTool(s, catalogTool("catalog_clear", "Remove all titles from one row while keeping its name, ID and position on the Stremio home screen."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
-			RowID string `json:"row_id" jsonschema:"Row ID to empty"`
-		}) (*mcp.CallToolResult, RowResult, error) {
-			row, err := rt.Manager.Upsert(ctx, catalog.UpsertInput{ID: in.RowID, Mode: "replace"})
-			if err != nil {
-				return nil, RowResult{}, err
-			}
-			return nil, RowResult{Catalog: row, Status: contentOnlyStatus()}, nil
-		})
-
-	mcp.AddTool(s, catalogTool("catalog_delete", "Permanently remove a catalog row and its contents from our add-on manifest. Does not touch other addons."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
-			RowID string `json:"row_id" jsonschema:"Row ID to delete"`
-		}) (*mcp.CallToolResult, SyncStatus, error) {
-			if err := rt.Manager.Delete(ctx, in.RowID); err != nil {
-				return nil, SyncStatus{}, err
-			}
-			return nil, rt.sync(ctx), nil
-		})
-
-	mcp.AddTool(s, catalogTool("catalog_sync", "Retry synchronizing our catalog manifest to your linked Stremio account. Preserves all installed streaming addons and Cinemeta."),
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, SyncStatus, error) {
-			return nil, rt.sync(ctx), nil
-		})
-
-	mcp.AddTool(s, catalogTool("catalog_install_url", "Get your private Stremio add-on manifest URL to install once in Stremio. Treat this URL as a secret."),
-		func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, struct {
-			URL string `json:"url"`
-		}, error) {
-			url, err := stremio.ManifestURL(rt.BaseURL, rt.FeedToken)
-			return nil, struct {
-				URL string `json:"url"`
-			}{URL: url}, err
-		})
-
-	mcp.AddTool(s, catalogTool("home_layout_get", "Read the live Stremio Home layout: installed addon order, all catalogs including hidden rows, and supported visibility controls. Excludes private addon URLs."),
+	mcp.AddTool(s, catalogTool("home_layout_get", "Read the live Stremio Home layout: installed addon order, all catalogs including hidden rows, and supported visibility controls. Excludes private addon URLs. If the account is not linked, shows custom rows only."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, stremio.HomeLayout, error) {
 			view, err := rt.homeLayoutGet(ctx)
 			return nil, view, err

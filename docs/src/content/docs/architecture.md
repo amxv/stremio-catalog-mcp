@@ -27,7 +27,9 @@ It advertises Stremio's **catalog** resource, not `meta`, `stream`, or `subtitle
 
 Rows have stable IDs, names, type, position, and ordered titles. The Go MCP endpoint validates tool calls and uses Redis compare-and-swap, so concurrent updates don't silently overwrite each other. It supports up to 24 rows and 100 titles per row.
 
-**Editing titles** changes the live catalog endpoint. **Creating, renaming, reordering, or deleting rows** also changes the add-on manifest. The Stremio app may retain a previously installed manifest until the account add-on collection syncs or is reinstalled.
+**Editing titles** changes the live catalog endpoint. **Creating, renaming, or deleting rows** also changes the add-on manifest. Moving a title inside its row doesn't need a manifest sync. Use `home_layout_update` to change the order or visibility of the catalog rows themselves. Stremio may retain an older manifest until the account add-on collection syncs or the app refreshes.
+
+`catalogs_get` gives a compact summary by default; a requested row returns full titles and saved poster URLs. `catalogs_update` validates a batch before committing its content changes with one Redis compare-and-swap. A recent `request_id` is recorded in that same state so retries don't duplicate newly created rows, and `expected_revision` can reject stale edits. When a batch changes the manifest, the server attempts one account sync and reports save status separately from sync status.
 
 For automatic sync, an optional `STREMIO_AUTH_KEY` lets the server call Stremio's `addonCollectionGet` and `addonCollectionSet`. The latter **replaces the account's entire add-on collection**, so the adapter:
 
@@ -39,6 +41,8 @@ For automatic sync, an optional `STREMIO_AUTH_KEY` lets the server call Stremio'
 ### Home layout updates
 
 `home_layout_get` reads the live installed add-on collection, including catalog IDs and visibility, but never returns private configured add-on URLs. `home_layout_update` accepts a batch of relative moves and row visibility changes, validates them as a whole, and makes one Stremio account replacement. It reuses the account sync lease, private pre-write backup, and read-after-write verification.
+
+When the Stremio account is not linked, the Home layout tools fall back to listing and editing custom rows only, retaining offline row positioning rather than forcing account linking. Those edits are saved through Redis CAS but cannot synchronize other add-ons or update the installed Home screen until the account is connected.
 
 Normal catalog synchronization still leaves other add-ons alone. With an **explicit Home layout request**, the adapter may reorder selected third-party catalog entries, change selected filter requirements, and reorder installed add-on descriptors. Other fields and streaming resources stay intact. A row cannot be moved to a different add-on without proxying its catalog; this MCP doesn't do that.
 

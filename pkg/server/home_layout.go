@@ -43,7 +43,13 @@ func (rt Runtime) readLayoutStores(ctx context.Context) (string, catalog.State, 
 
 func (rt Runtime) homeLayoutGet(ctx context.Context) (stremio.HomeLayout, error) {
 	if rt.Account.AuthKey == "" {
-		return stremio.HomeLayout{}, errors.New("Stremio account is not linked; configure STREMIO_AUTH_KEY")
+		// Preserve offline custom-row positioning even for installations that
+		// haven't linked a Stremio account yet.
+		state, err := rt.Manager.Read(ctx)
+		if err != nil {
+			return stremio.HomeLayout{}, err
+		}
+		return offlineLayout(state)
 	}
 	addons, err := rt.Account.Get(ctx)
 	if err != nil {
@@ -58,7 +64,7 @@ func (rt Runtime) homeLayoutGet(ctx context.Context) (stremio.HomeLayout, error)
 
 func (rt Runtime) homeLayoutUpdate(ctx context.Context, input stremio.HomeUpdateInput) (HomeUpdateResult, error) {
 	if rt.Account.AuthKey == "" {
-		return HomeUpdateResult{}, errors.New("Stremio account is not linked; configure STREMIO_AUTH_KEY")
+		return rt.offlineHomeUpdate(ctx, input)
 	}
 	if rt.Store == nil {
 		return HomeUpdateResult{}, errors.New("backup and synchronization lock storage is not configured")

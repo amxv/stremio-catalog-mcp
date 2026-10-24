@@ -8,6 +8,8 @@
 
 Ask your assistant to find something to watch, then send the results to Stremio. It can create, rename, reorder, refresh, clear, and delete custom catalog rows, and add or remove individual titles. **Home layout tools** can show/hide compatible rows from Cinemeta and other installed add-ons, reorder catalogs within each add-on, and rearrange whole add-ons. Existing Cinemeta metadata and streaming add-ons keep working; this service supplies **catalogs only**, never streams or its own recommendations.
 
+The **four-tool interface** is simple: `catalogs_get`/`catalogs_update` manage the content of your own rows; `home_layout_get`/`home_layout_update` manage their visibility and order alongside other installed add-ons. Detailed catalog reads and update results include saved **poster URLs**, ready to show in chat. Catalog changes can be batched, previewed with `dry_run`, and retried safely using `request_id`.
+
 For example: **“Hide Cinemeta's Popular and Featured rows, move my MCU row first, and place my catalog add-on above Cinemeta.”** `home_layout_get` lists the current layout; one batched `home_layout_update` call supports visibility changes, row moves, addon moves, and a no-write `dry_run` preview. Third-party rows without optional search/genre filters cannot be safely hidden. Individual rows cannot be moved across addon boundaries, although complete addons can be reordered.
 
 ## Let your agent set it up

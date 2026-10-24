@@ -1,32 +1,95 @@
 ---
 title: MCP tools
-description: The nine tools your AI assistant can use to manage your Stremio catalogs and Home layout.
+description: Four tools to manage catalog contents and the Stremio Home screen.
 order: 3
 category: Guides
-summary: What your assistant can read, create, edit, arrange, hide, restore, and synchronize.
+summary: Two reads, two updates. Catalogs control what to watch; Home layout controls where it appears.
 ---
 
-Your assistant sees **nine tools**. You normally won't need to call them yourself.
+The MCP exposes **four tools**. Your assistant can understand them directly from their names and descriptions:
 
-| Tool | What it does |
-| --- | --- |
-| `catalog_list` | Lists your rows, their IDs, and the titles in each row. |
-| `catalog_put` | Creates, renames, reorders, appends to, or replaces a row. |
-| `catalog_remove_titles` | Removes specific titles while leaving the other titles alone. |
-| `catalog_clear` | Empties a row, keeping its name and position. |
-| `catalog_delete` | Removes a row entirely. |
-| `catalog_sync` | Retries syncing the catalog manifest to your Stremio account. |
-| `catalog_install_url` | Returns the private add-on URL for installation in Stremio. |
-| `home_layout_get` | Lists all installed add-ons and catalogs (including hidden rows), their current order, and visibility capabilities. |
-| `home_layout_update` | Changes multiple row visibilities, catalog positions, and installed add-on positions in one request. Supports a no-write preview. |
+| | Read | Update |
+| --- | --- | --- |
+| **Catalog contents** | `catalogs_get` | `catalogs_update` |
+| **Home arrangement** | `home_layout_get` | `home_layout_update` |
 
-## Arrange your Home screen
+**Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons.
 
-Try asking:
+## Inspect your catalogs
+
+`catalogs_get({})` lists your own catalog rows with names, IDs, types, number of titles, and current visibility. The compact default avoids returning hundreds of posters when you only want to locate a row.
+
+To see a specific row's titles, use `catalogs_get({ "row_id": "row_..." })`. **The full result includes saved poster URLs**, release years, IMDb IDs, and exact title order. Use `include_titles: true` to get titles and posters from *all* your rows.
+
+Need to reinstall the add-on? `catalogs_get({ "include_install_url": true })` also returns its **private installation URL**. Treat that URL as a secret; ordinary reads don't return it.
+
+If Redis is temporarily unavailable, explicitly requesting only the installation URL still works; the response includes a warning that catalog rows could not be loaded.
+
+## Create and edit catalog contents
+
+Use `catalogs_update` with one or more ordered changes. For example:
+
+```json
+{
+  "changes": [
+    {
+      "action": "create",
+      "name": "Witty Whodunits",
+      "type": "series",
+      "titles": [
+        { "title": "Psych", "year": 2006 },
+        { "title": "Monk", "year": 2002 }
+      ]
+    }
+  ],
+  "request_id": "witty-whodunits-001"
+}
+```
+
+Your agent can use IMDb IDs (`tt...`) instead of titles. Cinemeta resolves title metadata and posters where available. IDs remain stable when you edit or rename a row.
+
+For **editing**, provide `action: "edit"`, `row_id`, and whichever changes you need:
+
+```json
+{
+  "changes": [
+    {
+      "action": "edit",
+      "row_id": "row_...",
+      "name": "Even Better Whodunits",
+      "add_titles": [{ "title": "Only Murders in the Building", "year": 2021 }],
+      "remove_title_ids": ["tt0491738"],
+      "move_titles": [
+        { "id": "tt0312172", "before": "tt11691774" }
+      ]
+    }
+  ],
+  "dry_run": true
+}
+```
+
+`move_titles` moves one title relative to another title **within the same row**. Use `before` or `after` with their IMDb IDs. To replace the *entire* title list, use `replace_titles: [{...}]`. An explicit `replace_titles: []` clears the row **without deleting it**. Omitting the field leaves existing titles untouched. You cannot combine `replace_titles` with `add_titles` or `remove_title_ids` in the same change.
+
+For deletion, use `{"action":"delete","row_id":"row_..."}`. To retry account synchronization, use `{"action":"sync"}`. These actions go inside the same `changes` array; the server validates the batch before a single Redis commit.
+
+The update result includes changed rows and their poster URLs, so an agent can show recommendations immediately after publishing them without another fetch.
+
+### Previews, safe retries, and sync
+
+- `dry_run: true` validates and previews the batch without saving anything. Generated row IDs in a preview are provisional.
+- `expected_revision` optionally rejects stale modifications; get the current revision with `catalogs_get`.
+- `request_id` prevents duplicate creations when retrying a saved batch after a timeout. Reuse the **same ID and changes** for a retry; choose a new ID for a different batch. The server retains the most recent 64 applied request IDs.
+- Results distinguish **saved** catalog changes from **Stremio account sync**. Editing only titles requires no manifest sync, while creating, renaming, or deleting a row automatically synchronizes the manifest once per batch. You can explicitly retry with `action: "sync"` if that step fails.
+
+One deployment supports 24 custom rows, with up to 100 titles in each row.
+
+## Organize your Home screen
+
+Ask your agent:
 
 > Hide Cinemeta's Popular Movie and Popular Series rows, put my custom catalog add-on before Cinemeta, and move Featured Series above Featured Movies. Show me the preview first.
 
-The assistant uses `home_layout_get` to obtain exact identifiers. It can then send one batch to `home_layout_update`, with `dry_run: true` first if you want a preview:
+`home_layout_get` returns exact IDs for all installed add-ons and their catalogs, including hidden rows. `home_layout_update` can change row visibility, reorder rows within an add-on, and move whole add-ons in one batch.
 
 ```json
 {
@@ -47,39 +110,16 @@ The assistant uses `home_layout_get` to obtain exact identifiers. It can then se
 }
 ```
 
-Set `dry_run` to `false` (or omit it) to save the changes. For a row move, provide `row_moves: [{ "row": {...}, "before": {...} }]` or use `after` instead of `before`. The `row` and target must belong to the **same add-on**. `addon_moves` positions the entire add-on (and all its rows) before or after another installed add-on.
+Set `dry_run` to `false` (or omit it) to save the changes. For a row move, use `row_moves: [{ "row": {...}, "before": {...} }]`, or `after` instead of `before`. The row and its target must belong to the **same add-on**. `addon_moves` positions the entire add-on (including all its catalog rows) before or after another add-on.
 
-Hiding a custom row keeps the titles and ID stored in Redis. Hiding a third-party catalog uses a supported optional `search` or `genre` filter; the original filter settings are saved privately and restored when you unhide it. Catalogs that are intrinsically search-only or have no usable optional filter aren't modified. Cinemeta's familiar Popular and Featured rows can also be restored if you hid them with the older Stremio workaround before installing this feature.
+Hiding a custom row keeps its titles in Redis. Hiding a compatible third-party catalog uses an existing optional `search` or `genre` filter; the original filter settings are retained privately and restored when you show it again. Intrinsically search-only catalogs and catalogs without a compatible optional filter cannot be modified safely.
 
-Moving an add-on can affect streaming source precedence. Custom rows cannot be arbitrarily interleaved with rows from a different add-on. The Home layout is held in your Stremio account, and already-open apps may need to reload or sign in again to refresh a cached manifest.
+Moving a whole add-on can affect streaming source precedence. Custom rows cannot be arbitrarily interleaved with rows from another add-on. Apps already open may need a refresh or sign-in to pick up a changed manifest.
 
-## Creating or editing a row
+If automatic Stremio account linking isn't configured, `home_layout_get` shows your custom rows only. You can still use `home_layout_update` to reorder or hide/show those rows in Redis, but their new placement won't appear in Stremio until the add-on manifest is reinstalled or the account is linked. Managing third-party add-on rows requires account linking.
 
-`catalog_put` is the main tool. For example, your assistant can publish:
+## Security and synchronization
 
-```json
-{
-  "name": "Witty Whodunits",
-  "type": "series",
-  "items": [
-    { "title": "Psych", "year": 2006 },
-    { "title": "Monk", "year": 2002 }
-  ]
-}
-```
+The authenticated `?key=` URL grants write access. **The `catalogs_update` and `home_layout_update` tools really do write**, even though this server advertises `readOnlyHint: true` for all tools per its compatibility convention; the annotation is not an authorization boundary.
 
-The tool resolves names through Cinemeta. It prefers an unambiguous exact match and accepts IMDb IDs such as `tt0491738` if a search is ambiguous. The assistant can research the correct ID using its regular web tools.
-
-To edit the same row later, it passes the returned `id` (starting with `row_`). `mode: "append"` adds new titles without duplicates; `mode: "replace"` replaces the entire ordered list. `position` moves a row among this add-on's rows, starting at zero.
-
-`catalog_remove_titles` accepts `row_id` and a list of IMDb IDs. `catalog_clear` removes all titles but keeps the row. `catalog_delete` removes the row itself. The limits are 24 rows per deployment and 100 titles per row.
-
-## What a successful response means
-
-Write results distinguish a catalog saved in Redis from a **manifest synchronized with Stremio**. Adding or removing individual titles doesn't require a manifest update; creating, renaming, reordering, or deleting rows does.
-
-The `synced` status confirms the account API accepted the manifest. It **doesn't** guarantee that an already-open TV app has refreshed the screen.
-
-For security, treat `catalog_put`, `catalog_remove_titles`, `catalog_clear`, `catalog_delete`, `catalog_sync`, and `home_layout_update` as **write-capable operations**, regardless of any advisory discovery annotations in the MCP schema. The authenticated `?key=` URL grants write access.
-
-Technical details: [Architecture and security](/docs/architecture).
+The server keeps private backups and read-after-write verification for Stremio account changes. Stremio account syncing uses an unversioned API; a saved catalog doesn't guarantee that an already-open TV has refreshed. See [Architecture and security](/docs/architecture).

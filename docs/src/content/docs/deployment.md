@@ -144,7 +144,7 @@ print('Stremio session securely configured in Vercel.')
 
 Close the temporary Agent Browser session afterward. Do not output `response`, `key`, or full authenticated URLs to the agent's transcript.
 
-Without `STREMIO_AUTH_KEY`, individual existing catalog rows can still be updated, but new/renamed rows require reinstalling the add-on manifest manually in **Stremio → Add-ons**. The MCP's `catalog_install_url` tool returns that private URL.
+Without `STREMIO_AUTH_KEY`, individual existing catalog rows can still be updated, but new/renamed rows require reinstalling the add-on manifest manually in **Stremio → Add-ons**. Request `catalogs_get` with `include_install_url: true` to retrieve that private URL.
 
 ### 5 · Deploy and add the MCP to ChatGPT
 
@@ -162,7 +162,7 @@ The human opens **ChatGPT → Plugins → Create custom MCP server → No authen
 
 ## Verify and troubleshoot
 
-Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose seven tools. Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed.
+Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose four tools. Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed.
 
 Stremio may cache both rows and manifests, so a refresh or restart can be necessary. The Stremio account API is not a stable public third-party interface; see [Architecture & security](/docs/architecture).
 

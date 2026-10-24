@@ -36,8 +36,9 @@ type Row struct {
 }
 
 type State struct {
-	Revision int64 `json:"revision"`
-	Rows     []Row `json:"rows"`
+	Revision       int64            `json:"revision"`
+	Rows           []Row            `json:"rows"`
+	RecentRequests []AppliedRequest `json:"recent_requests,omitempty"`
 }
 
 type ItemInput struct {

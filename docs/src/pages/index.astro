@@ -11,7 +11,7 @@ const examples = [
 
 const steps = [
   { number: "01", type: "A CONVERSATION", title: "Ask a better question.", detail: "Describe what you're in the mood for. ChatGPT can research, compare, remember context, and choose the titles, just as it does today.", example: "“Some clever, funny murder mysteries. Nothing too dark.”" },
-  { number: "02", type: "ONE TOOL CALL", title: "Send the good stuff.", detail: "The MCP receives a row name and the titles you picked. It resolves their IMDb IDs and creates a native Stremio catalog, without making recommendations itself.", example: "catalog_put({ name, type, items })" },
+  { number: "02", type: "ONE TOOL CALL", title: "Send the good stuff.", detail: "The MCP receives a row name and the titles you picked. It resolves their IMDb IDs and creates a native Stremio catalog, without making recommendations itself.", example: "catalogs_update({ changes: [...] })" },
   { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Your catalog appears alongside your other rows. Open any title and the metadata and streaming add-ons you already love take over.", example: "Murder mysteries with a wink  →" }
 ];
 
@@ -68,7 +68,7 @@ const features = [
           <div class="hero-art" aria-label="Illustration of an AI conversation sending a catalog row to Stremio">
             <div class="orbit orbit-a" aria-hidden="true"></div><div class="orbit orbit-b" aria-hidden="true"></div>
             <div class="chat-bubble"><div class="chat-star" aria-hidden="true"><Asterisk /></div><div><span class="chat-label">YOU, TO YOUR AGENT</span><p id="prompt-text">“Show me witty murder mysteries with an IMDb rating above 7.”</p></div><span class="chat-arrow" aria-hidden="true"><ArrowUpRight /></span></div>
-            <div class="transfer" aria-hidden="true"><span class="dash"></span><span class="transfer-pill">catalog_put <ArrowUpRight /></span><span class="dash"></span></div>
+            <div class="transfer" aria-hidden="true"><span class="dash"></span><span class="transfer-pill">catalogs_update <ArrowUpRight /></span><span class="dash"></span></div>
             <div class="tv-frame"><div class="tv-screen"><div class="tv-top"><span class="tv-wordmark"><span aria-hidden="true">◈</span> stremio</span><span>DISCOVER</span><span class="tv-avatar" aria-hidden="true">S</span></div><div class="tv-main"><div class="tv-kicker"><i></i> YOUR CUSTOM CATALOG</div><div class="tv-title-row"><h2 id="catalog-title">Murder mysteries with a wink</h2><span>SEE ALL <span aria-hidden="true">→</span></span></div><div class="poster-grid">
               {examples.map((item) => (<div class={`poster poster-${item.art}`} data-poster><div class="poster-pattern" aria-hidden="true"><i></i><i></i><i></i></div><span class="poster-no">{item.index} / 03</span><span class="poster-caption"><strong data-poster-title>{item.label}</strong><small data-poster-meta>{item.year} · {item.kind}</small></span></div>))}
             </div><div class="tv-status"><span><i></i> YOUR EXISTING STREAMING ADD-ONS</span><span>READY TO WATCH <ArrowUpRight /></span></div></div></div></div><div class="tv-foot" aria-hidden="true"></div>
