@@ -12,15 +12,17 @@ import (
 )
 
 type Runtime struct {
-	Manager   catalog.Manager
-	Account   stremio.AccountAPI
-	Store     *catalog.RedisStore
-	BaseURL   string
-	FeedToken string
+	Manager         catalog.Manager
+	Account         stremio.AccountAPI
+	Store           *catalog.RedisStore
+	VisibilityStore catalog.Store
+	BaseURL         string
+	FeedToken       string
 }
 
 func runtimeFromEnv() Runtime {
 	store := &catalog.RedisStore{URL: os.Getenv("UPSTASH_REDIS_REST_URL"), Token: os.Getenv("UPSTASH_REDIS_REST_TOKEN"), Key: "stremio-catalog-mcp:v1:catalogs"}
+	visibilityStore := &catalog.RedisStore{URL: store.URL, Token: store.Token, Key: store.Key + ":home-visibility"}
 	account := stremio.AccountAPI{AuthKey: os.Getenv("STREMIO_AUTH_KEY")}
 	account.BeforeReplace = func(ctx context.Context, addons []stremio.Descriptor) error {
 		raw, err := json.Marshal(addons)
@@ -32,7 +34,7 @@ func runtimeFromEnv() Runtime {
 	return Runtime{
 		Manager: catalog.Manager{Store: store, Resolver: catalog.Cinemeta{}},
 		Account: account,
-		Store:   store, BaseURL: os.Getenv("PUBLIC_BASE_URL"), FeedToken: os.Getenv("STREMIO_FEED_TOKEN"),
+		Store:   store, VisibilityStore: visibilityStore, BaseURL: os.Getenv("PUBLIC_BASE_URL"), FeedToken: os.Getenv("STREMIO_FEED_TOKEN"),
 	}
 }
 
@@ -103,7 +105,7 @@ type RowResult struct {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.1.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.2.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalog_list", "List your Stremio catalog rows, IDs, and titles. Call before editing existing rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, catalog.State, error) {
@@ -169,6 +171,18 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, struct {
 				URL string `json:"url"`
 			}{URL: url}, err
+		})
+
+	mcp.AddTool(s, catalogTool("home_layout_get", "Read the live Stremio Home layout: installed addon order, all catalogs including hidden rows, and supported visibility controls. Excludes private addon URLs."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, stremio.HomeLayout, error) {
+			view, err := rt.homeLayoutGet(ctx)
+			return nil, view, err
+		})
+
+	mcp.AddTool(s, catalogTool("home_layout_update", "Batch hide/show Home rows, reorder rows within any installed addon, and move complete addons. Provide exact IDs from home_layout_get. Use dry_run=true to preview. Preserves stream addons and backs up the account before saving."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, input stremio.HomeUpdateInput) (*mcp.CallToolResult, HomeUpdateResult, error) {
+			result, err := rt.homeLayoutUpdate(ctx, input)
+			return nil, result, err
 		})
 	return s
 }

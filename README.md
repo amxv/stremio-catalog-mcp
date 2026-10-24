@@ -1,12 +1,14 @@
 # Stremio Catalog MCP
 
-**Your AI recommends. Stremio plays.** This lightweight [Model Context Protocol](https://modelcontextprotocol.io/) server lets ChatGPT or another MCP assistant publish movie and TV recommendations directly to named rows on your Stremio home screen.
+**Your AI recommends. Stremio plays.** This lightweight [Model Context Protocol](https://modelcontextprotocol.io/) server lets ChatGPT or another MCP assistant publish movie and TV recommendations to native Stremio catalog rows, then organize your Home screen.
 
 **[Website](https://stremio-catalog-mcp.ashray.xyz/) · [Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) · [Self-hosting guide](https://stremio-catalog-mcp.ashray.xyz/docs/deployment) · [MCP tools](https://stremio-catalog-mcp.ashray.xyz/docs/tools)**
 
 ## What it does
 
-Ask your assistant to find something to watch, then send the results to Stremio. It can create, rename, reorder, refresh, clear, and delete catalog rows, and add or remove individual titles. Existing Cinemeta metadata and streaming add-ons keep working; this service supplies **catalogs only**, never streams or its own recommendations.
+Ask your assistant to find something to watch, then send the results to Stremio. It can create, rename, reorder, refresh, clear, and delete custom catalog rows, and add or remove individual titles. **Home layout tools** can show/hide compatible rows from Cinemeta and other installed add-ons, reorder catalogs within each add-on, and rearrange whole add-ons. Existing Cinemeta metadata and streaming add-ons keep working; this service supplies **catalogs only**, never streams or its own recommendations.
+
+For example: **“Hide Cinemeta's Popular and Featured rows, move my MCU row first, and place my catalog add-on above Cinemeta.”** `home_layout_get` lists the current layout; one batched `home_layout_update` call supports visibility changes, row moves, addon moves, and a no-write `dry_run` preview. Third-party rows without optional search/genre filters cannot be safely hidden. Individual rows cannot be moved across addon boundaries, although complete addons can be reordered.
 
 ## Let your agent set it up
 
@@ -31,14 +33,14 @@ Already have Redis? Use `--redis-mode existing` with `--redis-rest-url-file` and
 
 Once your agent has copied the URL: **Plugins → Create custom MCP server → No authentication → enter a name → Add as plugin.** Paste the full URL including `?key=...`. *No authentication* means ChatGPT won't initiate a separate OAuth flow; the URL still contains a private API key.
 
-Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row called Sci-Fi Worth Watching.”** Refresh Stremio if the new row hasn't appeared yet.
+Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row called Sci-Fi Worth Watching.”** Or: **“Show me every Stremio Home row and hide the default recommendations.”** Refresh Stremio if the new layout hasn't appeared yet.
 
 ## What runs where
 
 - **Go + Vercel:** stateless Streamable HTTP MCP endpoint and standard Stremio catalog endpoints.
 - **Redis REST (Upstash-compatible):** durable, ordered rows and synchronization safeguards.
 - **Cinemeta:** IMDb ID lookup, with playback handled by your existing add-ons.
-- **Stremio account API:** optional account linking to add and rename rows automatically; it is an unversioned integration and can require an app restart.
+- **Stremio account API:** optional account linking to add and rename rows and manage the Home layout; it is an unversioned integration and can require an app restart.
 
 One deployment manages **one Stremio account**. Keep all generated keys, Redis tokens, and the Stremio session private. See the website's [technical reference](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for security and limitations.
 

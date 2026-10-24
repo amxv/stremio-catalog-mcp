@@ -45,6 +45,9 @@ func BuildManifest(state catalog.State) Manifest {
 		Resources:   []string{"catalog"}, Types: []string{"movie", "series"}, Catalogs: []Catalog{},
 	}
 	for _, row := range state.Rows {
+		if row.Hidden {
+			continue
+		}
 		manifest.Catalogs = append(manifest.Catalogs, Catalog{Type: row.Type, ID: row.ID, Name: row.Name})
 	}
 	return manifest

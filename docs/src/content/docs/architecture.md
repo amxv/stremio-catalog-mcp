@@ -36,6 +36,16 @@ For automatic sync, an optional `STREMIO_AUTH_KEY` lets the server call Stremio'
 3. Saves a private Redis backup before every account replacement (up to 10 recent snapshots), aborting the write if the backup fails.
 4. Replaces only its own manifest, then reads back the collection to verify synchronization.
 
+### Home layout updates
+
+`home_layout_get` reads the live installed add-on collection, including catalog IDs and visibility, but never returns private configured add-on URLs. `home_layout_update` accepts a batch of relative moves and row visibility changes, validates them as a whole, and makes one Stremio account replacement. It reuses the account sync lease, private pre-write backup, and read-after-write verification.
+
+Normal catalog synchronization still leaves other add-ons alone. With an **explicit Home layout request**, the adapter may reorder selected third-party catalog entries, change selected filter requirements, and reorder installed add-on descriptors. Other fields and streaming resources stay intact. A row cannot be moved to a different add-on without proxying its catalog; this MCP doesn't do that.
+
+Our custom rows store their hidden status and order durably alongside their titles. Other add-ons' safely hidden catalogs use an existing optional `search` or `genre` filter. Their pre-hide filter settings are privately retained in Redis (not exposed through MCP) for exact restoration. Search-only catalogs and catalogs with no compatible optional filter are not overridden. A legacy Cinemeta Popular/Featured hide can be reversed.
+
+Home layout operations that also change custom rows span Stremio and Redis, so they cannot be truly atomic across the two services. The implementation performs optimistic comparisons, attempts rollback if Stremio clearly rejects the write, and reports ambiguous outcomes rather than risking an unsafe overwrite.
+
 This is **not** a transaction across multiple Stremio devices. Changes made simultaneously from a different Stremio client can still race. The account API is used by Stremio clients but is **not a stable, versioned third-party contract**, so compatibility can change.
 
 ## Security model

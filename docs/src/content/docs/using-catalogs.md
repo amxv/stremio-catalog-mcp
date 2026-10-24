@@ -28,6 +28,16 @@ The assistant can use its ordinary search, memory, and recommendation tools. **T
 
 Your assistant can list all saved rows, append or remove individual titles, replace an entire list, rename or reorder a row, clear it without deleting it, or delete it completely.
 
+## Organize the entire Home screen
+
+> Show me all my Home rows, including the ones hidden by other add-ons.
+
+> Hide Cinemeta's four default Popular and Featured rows, but leave the New releases rows alone.
+
+> Put my custom catalog add-on ahead of Cinemeta and move Featured Series above Featured Movies.
+
+`home_layout_get` finds rows across installed add-ons. `home_layout_update` can apply hide/show changes, reorder rows within an add-on, and change the order of entire add-ons in one batch. Ask for a dry-run preview before applying a larger change. Some third-party catalogs cannot be hidden safely without breaking their search/genre behavior; the MCP refuses those changes instead of silently disabling the add-on.
+
 ## What shows up on the TV
 
 Each row contains **movies or TV series**, not a mixture. If you ask for both, your assistant should create separate rows. Titles use IMDb IDs compatible with Cinemeta and your installed streaming add-ons.
@@ -40,4 +50,4 @@ The MCP does **not** control playback, install streaming providers, track your w
 
 You can ask a scheduled AI task to research picks and update a stable *Tonight's Picks* row. Whether that task can call the MCP without extra approval depends on your assistant's scheduling, plugin, and permission settings. The Stremio server does not run its own recommendation scheduler.
 
-See [all seven MCP tools](/docs/tools) for the exact operations your assistant can use.
+See [all nine MCP tools](/docs/tools) for the exact operations your assistant can use.

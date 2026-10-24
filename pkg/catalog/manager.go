@@ -41,6 +41,9 @@ func decodeState(raw string) (State, error) {
 	return state, nil
 }
 
+// ParseState validates a stored snapshot for coordinated catalog and layout edits.
+func ParseState(raw string) (State, error) { return decodeState(raw) }
+
 func (m Manager) mutate(ctx context.Context, change func(*State) error) (State, error) {
 	if m.Store == nil {
 		return State{}, errors.New("catalog storage is not configured")

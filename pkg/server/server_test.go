@@ -26,16 +26,26 @@ func TestMCPToolAnnotations(t *testing.T) {
 			Tools []struct {
 				Name        string                     `json:"name"`
 				Annotations map[string]json.RawMessage `json:"annotations"`
+				InputSchema json.RawMessage            `json:"inputSchema"`
 			} `json:"tools"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Result.Tools) != 7 {
-		t.Fatalf("expected all 7 tools, received %d", len(response.Result.Tools))
+	if len(response.Result.Tools) != 9 {
+		t.Fatalf("expected all 9 tools, received %d", len(response.Result.Tools))
+	}
+	expected := map[string]bool{
+		"catalog_list": true, "catalog_put": true, "catalog_remove_titles": true,
+		"catalog_clear": true, "catalog_delete": true, "catalog_sync": true,
+		"catalog_install_url": true, "home_layout_get": true, "home_layout_update": true,
 	}
 	for _, tool := range response.Result.Tools {
+		if !expected[tool.Name] {
+			t.Fatalf("unexpected or duplicated tool %q", tool.Name)
+		}
+		delete(expected, tool.Name)
 		t.Run(tool.Name, func(t *testing.T) {
 			var readOnly bool
 			if err := json.Unmarshal(tool.Annotations["readOnlyHint"], &readOnly); err != nil || !readOnly {
@@ -44,7 +54,23 @@ func TestMCPToolAnnotations(t *testing.T) {
 			if _, present := tool.Annotations["openWorldHint"]; present {
 				t.Fatalf("tool %q must omit openWorldHint, not set it to false", tool.Name)
 			}
+			if tool.Name == "home_layout_update" {
+				var input struct {
+					Properties map[string]json.RawMessage `json:"properties"`
+				}
+				if err := json.Unmarshal(tool.InputSchema, &input); err != nil {
+					t.Fatalf("invalid home layout input schema: %v", err)
+				}
+				for _, field := range []string{"visibility", "row_moves", "addon_moves", "dry_run"} {
+					if len(input.Properties[field]) == 0 {
+						t.Errorf("home_layout_update schema missing %s", field)
+					}
+				}
+			}
 		})
+	}
+	if len(expected) > 0 {
+		t.Fatalf("published tools missing from tools/list: %v", expected)
 	}
 }
 

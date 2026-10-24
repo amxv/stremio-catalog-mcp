@@ -31,6 +31,8 @@ type Row struct {
 	Name  string `json:"name"`
 	Type  string `json:"type"`
 	Items []Item `json:"items"`
+	// Hidden removes the row from our published manifest without deleting its contents.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 type State struct {

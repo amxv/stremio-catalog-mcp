@@ -224,13 +224,9 @@ func (a AccountAPI) Sync(ctx context.Context, state catalog.State, manifestURL s
 		if descriptorID(entry) == AddonID {
 			found++
 			var actual Manifest
-			if json.Unmarshal(entry.Manifest, &actual) != nil || len(actual.Catalogs) != len(state.Rows) {
+			expected := BuildManifest(state)
+			if json.Unmarshal(entry.Manifest, &actual) != nil || !reflect.DeepEqual(actual.Catalogs, expected.Catalogs) {
 				return errors.New("Stremio reported an older manifest; sync may need retry")
-			}
-			for i, row := range state.Rows {
-				if actual.Catalogs[i].ID != row.ID || actual.Catalogs[i].Name != row.Name || actual.Catalogs[i].Type != row.Type {
-					return errors.New("Stremio manifest differs after sync; retry")
-				}
 			}
 		}
 	}
