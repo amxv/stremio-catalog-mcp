@@ -366,10 +366,11 @@ func episodeDetails(r HistoryRecord, meta MediaMetadata, season *int) WatchDetai
 	return detail
 }
 
-// MarkWatched updates Stremio's own datastore. Series require explicit
-// episode numbers; marking an entire show based on a casual remark is unsafe.
+// MarkWatched updates Stremio's own datastore. With no episode selection it
+// marks every released regular episode of a series in one verified write.
+// Explicit season/episode selection still supports surgical corrections.
 func (s WatchHistoryService) MarkWatched(ctx context.Context, imdbID, mediaType string, season int, episodes []int) (WatchDetail, bool, error) {
-	return s.setWatched(ctx, imdbID, mediaType, season, episodes, true)
+	return s.setWatched(ctx, imdbID, mediaType, season, episodes, true, season == 0 && len(episodes) == 0)
 }
 
 // MarkUnwatched reverses specific episodes without touching others. When no
@@ -379,10 +380,10 @@ func (s WatchHistoryService) MarkUnwatched(ctx context.Context, imdbID, mediaTyp
 	if season == 0 && len(episodes) == 0 {
 		return s.ForgetTitle(ctx, imdbID, mediaType)
 	}
-	return s.setWatched(ctx, imdbID, mediaType, season, episodes, false)
+	return s.setWatched(ctx, imdbID, mediaType, season, episodes, false, false)
 }
 
-func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType string, season int, episodes []int, watched bool) (WatchDetail, bool, error) {
+func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType string, season int, episodes []int, watched, wholeTitle bool) (WatchDetail, bool, error) {
 	if !validHistoryID(imdbID) {
 		return WatchDetail{}, false, errors.New("a valid imdb_id is required to mark watched")
 	}
@@ -402,7 +403,7 @@ func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType s
 	if mediaType == "movie" && (len(episodes) > 0 || season != 0) {
 		return WatchDetail{}, false, errors.New("movies cannot have season or episodes")
 	}
-	if mediaType == "series" && (season < 0 || len(episodes) == 0 || len(episodes) > 30) {
+	if mediaType == "series" && !wholeTitle && (season < 0 || len(episodes) == 0 || len(episodes) > 30) {
 		return WatchDetail{}, false, errors.New("to update a series, supply a season and 1-30 explicit episode numbers")
 	}
 	// An unknown title is not a candidate for unwatching. Do not create a
@@ -424,6 +425,7 @@ func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType s
 	}
 	updates := make(map[string]any)
 	var newFlags []bool
+	eligibleEpisodes, skippedUpcoming, skippedUnknownDate := 0, 0, 0
 	if mediaType == "movie" {
 		if watched {
 			updates["timesWatched"] = 1
@@ -446,29 +448,58 @@ func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType s
 				return WatchDetail{}, false, err // never destroy unmappable history
 			}
 		}
-		requested := make(map[int]bool, len(episodes))
-		for _, number := range episodes {
-			if number < 1 || requested[number] {
-				return WatchDetail{}, false, errors.New("episode numbers must be unique positive integers")
-			}
-			requested[number] = true
-		}
-		found := make(map[int]bool)
 		changed := false
-		for i, ep := range meta.Episodes {
-			if ep.Season == season && requested[ep.Number] {
-				found[ep.Number] = true
-				if newFlags[i] != watched {
-					newFlags[i] = watched
+		if wholeTitle {
+			now := time.Now().UTC()
+			for i, ep := range meta.Episodes {
+				if ep.Season == 0 || ep.Number < 1 { // Specials are not part of full-show completion.
+					continue
+				}
+				release, err := parseEpisodeRelease(ep.Released)
+				if err != nil {
+					skippedUnknownDate++ // Fail closed rather than mark an unreleased episode.
+					continue
+				}
+				if release.After(now) {
+					skippedUpcoming++
+					continue
+				}
+				eligibleEpisodes++
+				if !newFlags[i] {
+					newFlags[i] = true
 					changed = true
 				}
 			}
-		}
-		if len(found) != len(requested) {
-			return WatchDetail{}, false, fmt.Errorf("season %d does not contain all requested episode numbers; nothing was changed", season)
+			if eligibleEpisodes == 0 {
+				return WatchDetail{}, false, errors.New("no regular episodes with verified release dates have aired; no watch status changed")
+			}
+		} else {
+			requested := make(map[int]bool, len(episodes))
+			for _, number := range episodes {
+				if number < 1 || requested[number] {
+					return WatchDetail{}, false, errors.New("episode numbers must be unique positive integers")
+				}
+				requested[number] = true
+			}
+			found := make(map[int]bool)
+			for i, ep := range meta.Episodes {
+				if ep.Season == season && requested[ep.Number] {
+					found[ep.Number] = true
+					if newFlags[i] != watched {
+						newFlags[i] = watched
+						changed = true
+					}
+				}
+			}
+			if len(found) != len(requested) {
+				return WatchDetail{}, false, fmt.Errorf("season %d does not contain all requested episode numbers; nothing was changed", season)
+			}
 		}
 		if !changed {
-			d := episodeDetails(*previous, meta, &season)
+			d := episodeDetails(*previous, meta, selectedSeason(wholeTitle, season))
+			if wholeTitle {
+				describeWholeShowCompletion(&d, eligibleEpisodes, skippedUpcoming, skippedUnknownDate)
+			}
 			return d, false, nil
 		}
 		encoded, err := encodeWatchedEpisodes(newFlags, ids)
@@ -515,7 +546,32 @@ func (s WatchHistoryService) setWatched(ctx context.Context, imdbID, mediaType s
 	if err != nil || !reflect.DeepEqual(actual, newFlags) {
 		return WatchDetail{}, false, errors.New("Stremio did not retain the expected watched episodes")
 	}
-	return episodeDetails(*confirmed, meta, &season), true, nil
+	d := episodeDetails(*confirmed, meta, selectedSeason(wholeTitle, season))
+	if wholeTitle {
+		describeWholeShowCompletion(&d, eligibleEpisodes, skippedUpcoming, skippedUnknownDate)
+	}
+	return d, true, nil
+}
+
+func selectedSeason(wholeTitle bool, season int) *int {
+	if wholeTitle {
+		return nil
+	}
+	return &season
+}
+
+func parseEpisodeRelease(released string) (time.Time, error) {
+	if released == "" {
+		return time.Time{}, errors.New("episode release date missing")
+	}
+	if d, err := time.Parse(time.RFC3339Nano, released); err == nil {
+		return d, nil
+	}
+	return time.Parse("2006-01-02", released)
+}
+
+func describeWholeShowCompletion(d *WatchDetail, eligible, upcoming, unknown int) {
+	d.Note = fmt.Sprintf("Marked all %d released regular episodes watched; skipped %d upcoming, %d without a verifiable release date, and all season-0 specials. Unreleased episodes remain unconfirmed.", eligible, upcoming, unknown)
 }
 
 func rawHistoryRecord(r *HistoryRecord) map[string]json.RawMessage {

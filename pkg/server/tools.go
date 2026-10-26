@@ -97,7 +97,7 @@ func catalogTool(name, description string) *mcp.Tool {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.4.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.5.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. With no parameters return compact row summaries; pass row_id for one row's ordered titles including saved poster URLs, or include_titles=true for every row's titles. include_install_url=true returns the private addon URL only when explicitly requested. Use home_layout_get for third-party addon rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
@@ -123,7 +123,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, result, err
 		})
 
-	mcp.AddTool(s, catalogTool("watch_history", "Read/search Stremio watch history or update it. Default action=get lists recent history; imdb_id inspects a movie or exact watched episodes and spoiler_safe_through. mark_watched: movie by imdb_id, or series with season and explicit episodes=[1,2]. mark_unwatched: title without season/episodes completely resets ALL playback history (movie or series), marks it removed, and hides it from watch history; Stremio retains an empty sync tombstone because its API has no physical per-title deletion. With season AND episodes=[1,2], mark_unwatched selectively clears those episodes only. Use imdb_id or query plus media_type; never infer watched episodes from partial playback."),
+	mcp.AddTool(s, catalogTool("watch_history", "Read or edit live Stremio watch history in ONE call per title, no episode lookup required. Default action=get lists history or inspects an imdb_id. To fully watch ANY movie or TV show: action=mark_watched plus just query='Title' or imdb_id='tt...'; for series this checks all RELEASED regular episodes across all seasons, skipping future/unknown-release episodes and specials, in a single verified account write. To fully unwatch/remove a movie or TV show: action=mark_unwatched with just query or imdb_id; this clears all playback history and marks its record removed (Stremio retains a sync tombstone). To change only specific series episodes, supply season and episodes=[1,2] alongside either action. For exact saved title query, media_type is optional; ambiguous titles may need media_type/year or imdb_id. Read responses include watched episodes, plots of watched episodes and spoiler_safe_through. Never infer watched episodes from partial playback."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input WatchHistoryInput) (*mcp.CallToolResult, WatchHistoryResult, error) {
 			result, err := rt.watchHistory(ctx, input)
 			return nil, result, err

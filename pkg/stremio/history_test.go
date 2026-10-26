@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestStremioWatchedBitfieldAnchorAndRoundTrip(t *testing.T) {
@@ -220,6 +221,100 @@ func TestWatchHistoryMarkEpisodesPreservesUnrelatedState(t *testing.T) {
 	_, _, err = svc.MarkWatched(context.Background(), "tt1234567", "series", 1, []int{500})
 	if err == nil || f.writes != 1 {
 		t.Fatalf("unknown episode must not alter account: %v", err)
+	}
+}
+
+func TestWholeSeriesMarkWatchedUsesOneWriteAndSkipsFutureSpecialsAndUnknownDates(t *testing.T) {
+	f, svc := newHistoryFixture(t)
+	past := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
+	future := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
+	f.metaData = map[string]any{
+		"id": "tt1234567", "type": "series", "name": "A Fictional Show",
+		"videos": []map[string]any{
+			{"id": "tt1234567:2:1", "season": 2, "episode": 1, "released": past, "name": "The ending"},
+			{"id": "tt1234567:1:4", "season": 1, "episode": 4, "released": future, "name": "Unreleased spoiler"},
+			{"id": "tt1234567:1:3", "season": 1, "episode": 3, "name": "Unverified release spoiler"},
+			{"id": "tt1234567:1:1", "season": 1, "episode": 1, "released": past, "name": "Pilot"},
+			{"id": "tt1234567:1:2", "season": 1, "episode": 2, "released": past, "name": "Second episode"},
+			{"id": "tt1234567:0:1", "season": 0, "episode": 1, "released": past, "name": "Extra"},
+		},
+	}
+	ids := []string{"tt1234567:0:1", "tt1234567:1:1", "tt1234567:1:2", "tt1234567:1:3", "tt1234567:1:4", "tt1234567:2:1"}
+	prior, err := encodeWatchedEpisodes([]bool{true, false, true, false, false, false}, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.set(t, "tt1234567", "series", fmt.Sprintf(`{"watched":%q,"video_id":"tt1234567:1:4","timeOffset":32000,"customPlayback":"keep"}`, prior))
+
+	detail, changed, err := svc.MarkWatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err != nil || !changed || detail.EpisodeHistory != "verified" || len(detail.Seasons) != 3 || f.writes != 1 {
+		t.Fatalf("whole-series update failed: detail=%+v changed=%t err=%v writes=%d", detail, changed, err, f.writes)
+	}
+	if !strings.Contains(detail.Note, "3 released") || !strings.Contains(detail.Note, "1 upcoming") || !strings.Contains(detail.Note, "1 without a verifiable") {
+		t.Fatalf("response must explain excluded episodes: %s", detail.Note)
+	}
+	var state map[string]json.RawMessage
+	item := f.raw(t, "tt1234567")
+	if err := json.Unmarshal(item["state"], &state); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := decodeWatchedEpisodes(strings.Trim(string(state["watched"]), `"`), ids)
+	if err != nil || !reflect.DeepEqual(actual, []bool{true, true, true, false, false, true}) {
+		t.Fatalf("wrong episode flags (special previously watched must remain): %v err=%v", actual, err)
+	}
+	if string(state["video_id"]) != `"tt1234567:1:4"` || string(state["timeOffset"]) != "32000" || string(state["customPlayback"]) != `"keep"` {
+		t.Fatalf("full-watch must preserve unrelated playback metadata: %+v", state)
+	}
+	serialized, _ := json.Marshal(detail)
+	if strings.Contains(string(serialized), "Unreleased spoiler") || strings.Contains(string(serialized), "Unverified release spoiler") {
+		t.Fatal("full-show result exposed unreleased episode titles")
+	}
+	again, changed, err := svc.MarkWatched(context.Background(), "tt1234567", "", 0, nil)
+	if err != nil || changed || len(again.Seasons) != 3 || f.writes != 1 {
+		t.Fatalf("repeat whole-show update must be a no-op: %+v changed=%t writes=%d err=%v", again, changed, f.writes, err)
+	}
+}
+
+func TestWholeSeriesMarkWatchedCanHandleOverThirtyEpisodesAndEmptyRecord(t *testing.T) {
+	f, svc := newHistoryFixture(t)
+	videos := make([]map[string]any, 0, 120)
+	for season := 1; season <= 3; season++ {
+		for ep := 1; ep <= 40; ep++ {
+			videos = append(videos, map[string]any{"id": fmt.Sprintf("tt1234567:%d:%d", season, ep), "season": season, "episode": ep, "released": "2020-01-01", "name": "Episode"})
+		}
+	}
+	f.metaData = map[string]any{"id": "tt1234567", "type": "series", "name": "A Fictional Show", "videos": videos}
+	detail, changed, err := svc.MarkWatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err != nil || !changed || len(detail.Seasons) != 3 || f.writes != 1 {
+		t.Fatalf("whole-show update failed on unseen 120-episode title: %+v changed=%t err=%v", detail, changed, err)
+	}
+	for _, season := range detail.Seasons {
+		if !season.Completed || len(season.WatchedEpisodes) != 40 {
+			t.Fatalf("one-call update failed to cover all 40 episodes in season %d: %+v", season.Season, season)
+		}
+	}
+	item := f.raw(t, "tt1234567")
+	if string(item["removed"]) != "true" || string(item["temp"]) != "true" {
+		t.Fatalf("marking unseen series must not add it to the Library: %+v", item)
+	}
+}
+
+func TestWholeSeriesMarkWatchedFailsClosedWithoutReleaseDatesOrOnCorruptBitfield(t *testing.T) {
+	f, svc := newHistoryFixture(t)
+	f.episodes() // intentionally no release dates
+	_, changed, err := svc.MarkWatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err == nil || changed || f.writes != 0 {
+		t.Fatalf("unverified releases must not be auto-marked: changed=%t err=%v", changed, err)
+	}
+	f.episodes()
+	for i, entry := range f.metaData["videos"].([]map[string]any) {
+		entry["released"] = "2020-01-01"
+		f.metaData["videos"].([]map[string]any)[i] = entry
+	}
+	f.set(t, "tt1234567", "series", `{"watched":"invalid anchor","timeOffset":4000}`)
+	_, changed, err = svc.MarkWatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err == nil || changed || f.writes != 0 {
+		t.Fatalf("full-show update must refuse a corrupt existing bitmap: changed=%t err=%v", changed, err)
 	}
 }
 

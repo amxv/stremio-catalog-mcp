@@ -30,7 +30,33 @@ The result includes `watched_episodes`, `watched_episode_details` (titles and pl
 
 `unconfirmed` means Stremio doesn't prove an episode is watched, **not** that it has never been watched. If Stremio has no record, the bitfield is corrupt, or its episode list cannot be matched safely, the result explicitly reports unknown/unverified status and never invents a spoiler boundary. Stremio stores one series-level `lastWatched` timestamp, not per-episode historical watch dates.
 
-The same tool marks a movie or exact episodes as watched when you say you've watched them:
+### Entire movie or series: just one tool call
+
+When someone says they've watched a movie **or an entire TV show**, use just `action: "mark_watched"` and its title or IMDb ID. **Do not look up seasons or episode numbers first.** For example:
+
+```json
+{ "action": "mark_watched", "query": "Breaking Bad" }
+```
+
+```json
+{ "action": "mark_watched", "imdb_id": "tt0816692" }
+```
+
+For series, the server finds the canonical episodes from Cinemeta and updates all **released regular episodes across all seasons in one verified Stremio write**. Future-dated episodes, those with unknown release dates, and season-0 specials are not newly marked watched. Previously saved watched markers are preserved. The response reports the number of eligible and skipped episodes, and future-episode plots/titles are not revealed. Repeating a full-show update is safe and will pick up any newly released episodes.
+
+To clear **an entire movie or TV series** from your Stremio watch history in the same simple way:
+
+```json
+{ "action": "mark_unwatched", "query": "Breaking Bad" }
+```
+
+This deliberately clears **all** playback state for the title: watched episodes, movie watched flags, last played video, playback offset/duration, time watched, and last watched timestamps. It also marks the library item removed/temporary to hide it from the Library and watch-history views. The MCP re-reads the record after the write to verify that no playback state remains. Repeating the action is a no-op. Clearing a TV series does not require its episode list, so it can work even if the stored watched bitfield is corrupt or outdated.
+
+**Stremio API limitation:** there is no supported per-item hard-delete endpoint. Stremio keeps a minimal *removed synchronization tombstone* containing the title ID and metadata. `mark_unwatched` removes the playback history, **not** the underlying tombstone from Stremio's servers. A physical erasure of a title's last server-side record cannot be guaranteed through the API.
+
+### Correct individual episodes without affecting other episodes
+
+For episode-specific corrections, optionally supply `season` and `episodes`. Mark a few episodes watched:
 
 ```json
 { "action": "mark_watched", "imdb_id": "tt0816692", "media_type": "movie" }
@@ -46,17 +72,7 @@ To reverse **specific episodes only** without changing playback position or othe
 { "action": "mark_unwatched", "imdb_id": "tt0903747", "season": 1, "episodes": [2] }
 ```
 
-To clear **an entire movie or TV series** from your Stremio watch history, omit both `season` and `episodes`:
-
-```json
-{ "action": "mark_unwatched", "imdb_id": "tt0903747" }
-```
-
-This deliberately clears **all** playback state for the title: watched episodes, movie watched flags, last played video, playback offset/duration, time watched, and last watched timestamps. It also marks the library item removed/temporary to hide it from the Library and watch-history views. The MCP re-reads the record after the write to verify that no playback state remains. Repeating the action is a no-op. Clearing a TV series does not require its episode list, so it can work even if the stored watched bitfield is corrupt or outdated.
-
-**Stremio API limitation:** there is no supported per-item hard-delete endpoint. Stremio keeps a minimal *removed synchronization tombstone* containing the title ID and metadata. `mark_unwatched` removes the playback history, **not** the underlying tombstone from Stremio's servers. A physical erasure of a title's last server-side record cannot be guaranteed through the API.
-
-For a title not already identified by IMDb ID, supply `query` and `media_type` (optionally `year`) instead. Ambiguous titles cannot be marked without disambiguation. **Marking a series watched** always requires explicit season and episode numbers. **Unwatching specific episodes** also requires both. The title-wide `mark_unwatched` form is intentionally destructive: leave `season` and `episodes` out only when the user wants the whole title cleared. New watched records are temporary history items, not additions to your saved Library.
+An exact title already in Stremio history resolves automatically without `media_type` or a separate search call. For a title not in history, the MCP attempts exact Cinemeta matches in movie and series catalogs. Supply `media_type` (optionally `year`) or an IMDb ID if the title is ambiguous. **Episode-specific** updates require explicit season and episode numbers; entire-title updates require neither. New watched records are temporary history items, not additions to your saved Library.
 
 Stremio account linking (`STREMIO_AUTH_KEY`) is required, and results reflect only that Stremio account's synced history, not other streaming apps. The service uses Stremio's unversioned datastore API and Cinemeta's canonical episode order, so behavior may depend on upstream API changes. It re-reads after writes to verify the updated status but cannot prevent concurrent changes on another Stremio device atomically.
 

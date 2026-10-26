@@ -25,6 +25,7 @@ func TestMCPToolAnnotations(t *testing.T) {
 		Result struct {
 			Tools []struct {
 				Name        string                     `json:"name"`
+				Description string                     `json:"description"`
 				Annotations map[string]json.RawMessage `json:"annotations"`
 				InputSchema json.RawMessage            `json:"inputSchema"`
 			} `json:"tools"`
@@ -72,6 +73,13 @@ func TestMCPToolAnnotations(t *testing.T) {
 				for _, field := range fields {
 					if len(input.Properties[field]) == 0 {
 						t.Errorf("home_layout_update schema missing %s", field)
+					}
+				}
+				if tool.Name == "watch_history" {
+					for _, phrase := range []string{"ONE call", "mark_watched", "mark_unwatched", "RELEASED", "season", "episodes", "query"} {
+						if !strings.Contains(tool.Description, phrase) {
+							t.Errorf("watch_history description must explain one-call whole-title behavior: missing %q", phrase)
+						}
 					}
 				}
 			}

@@ -13,13 +13,13 @@ import (
 // A single tool handles natural history requests as well as deliberate watched
 // updates. The default read needs no action or other parameters.
 type WatchHistoryInput struct {
-	Action    string `json:"action,omitempty" jsonschema:"get (default); mark_watched requires exact episodes for series; mark_unwatched with only a title clears ALL playback history, while season plus episodes selectively unwatches those episodes"`
-	Query     string `json:"query,omitempty" jsonschema:"Search history by movie/series title. For marking, accepts a title with media_type to resolve a unique IMDb ID"`
+	Action    string `json:"action,omitempty" jsonschema:"get (default), mark_watched, mark_unwatched. With just a title/ID, mark_watched completes every released regular episode or one movie, and mark_unwatched clears all history for that title; specify season and episodes only for selective episode changes"`
+	Query     string `json:"query,omitempty" jsonschema:"Search history or identify a movie/series to mark watched or unwatched. Exact existing history titles work without media_type; use media_type or year to disambiguate"`
 	IMDbID    string `json:"imdb_id,omitempty" jsonschema:"Exact IMDb tt... ID; for get, returns episode-level progress of a series"`
-	MediaType string `json:"media_type,omitempty" jsonschema:"movie or series; required for marking a title not already in Stremio"`
+	MediaType string `json:"media_type,omitempty" jsonschema:"movie or series, optional for exact existing titles and IMDb IDs; use for ambiguous or unrecorded titles"`
 	Year      int    `json:"year,omitempty" jsonschema:"Optional release year when resolving a title to mark watched"`
-	Season    *int   `json:"season,omitempty" jsonschema:"Filter get by season, or select exact episodes for a series update; omit for full-title mark_unwatched history reset"`
-	Episodes  []int  `json:"episodes,omitempty" jsonschema:"Explicit episode numbers for scoped updates, e.g. [1,2]; omit with season to reset ALL playback history for a movie or entire series with mark_unwatched"`
+	Season    *int   `json:"season,omitempty" jsonschema:"On get filter by season; on mark_watched/unwatched include with episodes for specific episode changes. Omit both for whole-title updates"`
+	Episodes  []int  `json:"episodes,omitempty" jsonschema:"Explicit numbers e.g. [1,2] when updating specific series episodes; omit both episodes and season to mark all released episodes watched or to wipe entire title history"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum history results, 1-50 (default 20)"`
 	Offset    int    `json:"offset,omitempty" jsonschema:"Skip this many matching history results for pagination"`
 }
@@ -70,46 +70,32 @@ func (rt Runtime) watchHistory(ctx context.Context, input WatchHistoryInput) (Wa
 		if input.Limit != 0 || input.Offset != 0 {
 			return WatchHistoryResult{}, errors.New("limit and offset are only valid for history searches")
 		}
-		id := input.IMDbID
-		if id == "" && input.Query != "" {
-			if input.MediaType != "movie" && input.MediaType != "series" {
-				return WatchHistoryResult{}, errors.New("media_type is required to resolve a title for a watch-status update")
-			}
-			resolved, err := catalog.Cinemeta{}.Resolve(ctx, input.MediaType, catalog.ItemInput{Title: input.Query, Year: input.Year})
-			if err != nil {
-				return WatchHistoryResult{}, fmt.Errorf("cannot uniquely resolve title for watch-status update: %w", err)
-			}
-			id = resolved.ID
-		}
-		if id == "" {
-			return WatchHistoryResult{}, errors.New("provide imdb_id or query and media_type to update watch status")
-		}
 		if input.Season == nil && len(input.Episodes) > 0 {
 			return WatchHistoryResult{}, errors.New("episode updates require an explicit season")
 		}
 		if input.Season != nil && len(input.Episodes) == 0 {
-			return WatchHistoryResult{}, errors.New("season requires explicitly selected episodes; omit both to clear an entire title with mark_unwatched")
+			return WatchHistoryResult{}, errors.New("season requires explicit episodes; omit both for a whole-title update")
 		}
-		if input.Action == "mark_watched" && input.MediaType == "series" && (input.Season == nil || len(input.Episodes) == 0) {
-			return WatchHistoryResult{}, errors.New("mark_watched on a series requires an explicit season and episodes list")
+		id, resolvedType, err := resolveWatchSelection(ctx, svc, input)
+		if err != nil {
+			return WatchHistoryResult{}, err
 		}
 		season := 0
 		if input.Season != nil {
 			season = *input.Season
 		}
-		if input.MediaType == "movie" && input.Season != nil {
+		if resolvedType == "movie" && input.Season != nil {
 			return WatchHistoryResult{}, errors.New("movies cannot have season or episodes")
 		}
 		var detail stremio.WatchDetail
 		var changed bool
-		var err error
 		clearEntireTitle := input.Action == "mark_unwatched" && input.Season == nil && len(input.Episodes) == 0
 		if clearEntireTitle {
-			detail, changed, err = svc.ForgetTitle(ctx, id, input.MediaType)
+			detail, changed, err = svc.ForgetTitle(ctx, id, resolvedType)
 		} else if input.Action == "mark_unwatched" {
-			detail, changed, err = svc.MarkUnwatched(ctx, id, input.MediaType, season, input.Episodes)
+			detail, changed, err = svc.MarkUnwatched(ctx, id, resolvedType, season, input.Episodes)
 		} else {
-			detail, changed, err = svc.MarkWatched(ctx, id, input.MediaType, season, input.Episodes)
+			detail, changed, err = svc.MarkWatched(ctx, id, resolvedType, season, input.Episodes)
 		}
 		if err != nil {
 			return WatchHistoryResult{}, err
@@ -129,8 +115,92 @@ func (rt Runtime) watchHistory(ctx context.Context, input WatchHistoryInput) (Wa
 		if changed {
 			message = "Marked " + status + " in Stremio; update verified."
 		}
+		if input.Action == "mark_watched" && input.Season == nil && resolvedType == "series" {
+			message = "Already marked all released regular episodes watched; no write needed. " + detail.Note
+			if changed {
+				message = "All released regular episodes marked watched across every season in one Stremio write; update verified. " + detail.Note
+			}
+		}
 		return WatchHistoryResult{Action: input.Action, Changed: changed, Detail: &detail, Message: message}, nil
 	default:
 		return WatchHistoryResult{}, errors.New("action must be get, mark_watched, or mark_unwatched")
+	}
+}
+
+// resolveWatchSelection prefers an exact Stremio history title to avoid
+// forcing agents to first look up an IMDb ID or guess its media type.
+// Otherwise, Cinemeta must find exactly one canonical title to write.
+func resolveWatchSelection(ctx context.Context, svc stremio.WatchHistoryService, input WatchHistoryInput) (string, string, error) {
+	if input.MediaType != "" && input.MediaType != "movie" && input.MediaType != "series" {
+		return "", "", errors.New("media_type must be movie or series")
+	}
+	if input.IMDbID != "" {
+		if strings.TrimSpace(input.Query) != "" || input.Year != 0 {
+			return "", "", errors.New("supply either imdb_id or query/year, not both")
+		}
+		if input.MediaType == "" && input.Action == "mark_watched" {
+			existing, err := svc.Account.GetOne(ctx, input.IMDbID)
+			if err != nil {
+				return "", "", err
+			}
+			if existing != nil {
+				return input.IMDbID, existing.Type, nil
+			}
+			movie, movieErr := svc.Metadata.Fetch(ctx, "movie", input.IMDbID)
+			series, seriesErr := svc.Metadata.Fetch(ctx, "series", input.IMDbID)
+			switch {
+			case movieErr == nil && seriesErr != nil:
+				return movie.ID, movie.Type, nil
+			case seriesErr == nil && movieErr != nil:
+				return series.ID, series.Type, nil
+			case movieErr == nil && seriesErr == nil:
+				return "", "", errors.New("IMDb ID resolves as both a movie and a series; supply media_type")
+			default:
+				return "", "", errors.New("IMDb ID is not recorded and its media_type could not be verified; provide media_type")
+			}
+		}
+		return input.IMDbID, input.MediaType, nil
+	}
+	title := strings.TrimSpace(input.Query)
+	if title == "" {
+		return "", "", errors.New("provide an IMDb ID or title to update watch status")
+	}
+	if input.Year == 0 {
+		matches, _, err := svc.Search(ctx, stremio.WatchSearch{Query: title, Limit: 50})
+		if err != nil {
+			return "", "", fmt.Errorf("cannot search saved Stremio history for title: %w", err)
+		}
+		var exact []stremio.WatchSummary
+		for _, item := range matches {
+			if strings.EqualFold(strings.TrimSpace(item.Title), title) && (input.MediaType == "" || item.MediaType == input.MediaType) {
+				exact = append(exact, item)
+			}
+		}
+		if len(exact) == 1 {
+			return exact[0].IMDbID, exact[0].MediaType, nil
+		}
+		if len(exact) > 1 {
+			return "", "", errors.New("multiple exact Stremio history titles matched; supply media_type, year, or IMDb ID")
+		}
+	}
+	resolver := catalog.Cinemeta{BaseURL: svc.Metadata.BaseURL, Client: svc.Metadata.Client}
+	if input.MediaType != "" {
+		item, err := resolver.Resolve(ctx, input.MediaType, catalog.ItemInput{Title: title, Year: input.Year})
+		if err != nil {
+			return "", "", fmt.Errorf("cannot uniquely resolve title for watch-status update: %w", err)
+		}
+		return item.ID, item.Type, nil
+	}
+	movie, movieErr := resolver.Resolve(ctx, "movie", catalog.ItemInput{Title: title, Year: input.Year})
+	series, seriesErr := resolver.Resolve(ctx, "series", catalog.ItemInput{Title: title, Year: input.Year})
+	switch {
+	case movieErr == nil && seriesErr == nil:
+		return "", "", errors.New("title matches both a movie and a series; provide media_type or IMDb ID")
+	case movieErr == nil:
+		return movie.ID, movie.Type, nil
+	case seriesErr == nil:
+		return series.ID, series.Type, nil
+	default:
+		return "", "", fmt.Errorf("cannot resolve an exact movie or series title %q; provide IMDb ID or media_type/year to disambiguate", title)
 	}
 }
