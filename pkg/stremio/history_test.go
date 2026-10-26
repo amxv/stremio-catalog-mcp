@@ -54,11 +54,12 @@ func TestStremioWatchedBitfieldAnchorAndRoundTrip(t *testing.T) {
 }
 
 type historyFixture struct {
-	mu       sync.Mutex
-	items    map[string]json.RawMessage
-	writes   int
-	metaData map[string]any
-	server   *httptest.Server
+	mu              sync.Mutex
+	items           map[string]json.RawMessage
+	writes          int
+	normalizeResets bool
+	metaData        map[string]any
+	server          *httptest.Server
 }
 
 func newHistoryFixture(t *testing.T) (*historyFixture, WatchHistoryService) {
@@ -107,6 +108,13 @@ func newHistoryFixture(t *testing.T) (*historyFixture, WatchHistoryService) {
 				if json.Unmarshal(item, &value) != nil || value.ID == "" {
 					http.Error(w, "missing ID", 400)
 					return
+				}
+				if f.normalizeResets {
+					var fields map[string]json.RawMessage
+					if json.Unmarshal(item, &fields) == nil && string(fields["state"]) == "{}" {
+						fields["state"] = json.RawMessage(`{"duration":0,"episode":0,"flaggedWatched":0,"lastWatched":null,"noNotif":false,"overallTimeWatched":0,"season":0,"timeOffset":0,"timeWatched":0,"timesWatched":0,"video_id":null,"watched":null}`)
+						item, _ = json.Marshal(fields)
+					}
 				}
 				f.items[value.ID] = item
 				f.writes++
@@ -342,6 +350,34 @@ func TestWatchHistoryMarkUnwatchedWholeSeriesClearsEvenCorruptBitfields(t *testi
 	_, changed, err = svc.MarkUnwatched(context.Background(), "tt1234567", "series", 0, nil)
 	if err != nil || changed || f.writes != 1 {
 		t.Fatalf("clearing an already-cleared series should be idempotent: changed=%t writes=%d err=%v", changed, f.writes, err)
+	}
+}
+
+func TestWatchHistoryResetVerifiesNormalizedStremioState(t *testing.T) {
+	f, svc := newHistoryFixture(t)
+	f.normalizeResets = true // matches the twelve neutral fields observed in Stremio's live API
+	f.set(t, "tt7654321", "movie", `{"timesWatched":2,"timeOffset":4000,"lastWatched":"2026-01-01T00:00:00Z"}`)
+	d, changed, err := svc.MarkUnwatched(context.Background(), "tt7654321", "movie", 0, nil)
+	if err != nil || !changed || d.Recorded || d.EpisodeHistory != "cleared" {
+		t.Fatalf("reset rejected normalized empty playback state: %+v changed=%t err=%v", d, changed, err)
+	}
+	again, changed, err := svc.MarkUnwatched(context.Background(), "tt7654321", "", 0, nil)
+	if err != nil || changed || again.Recorded || f.writes != 1 {
+		t.Fatalf("normalized tombstone should be idempotent: %+v changed=%t err=%v writes=%d", again, changed, err, f.writes)
+	}
+
+	// Any still-set or unknown state field must fail closed. These fields could
+	// carry watch progress even if the common timesWatched flag was cleared.
+	for _, state := range []string{
+		`{"duration":0,"episode":0,"flaggedWatched":0,"lastWatched":"2026-10-01T00:00:00Z"}`,
+		`{"timesWatched":0,"customPlayback":"still recorded"}`,
+		`{"timeWatched":123}`,
+		`{"watched":"nonempty"}`,
+	} {
+		r := HistoryRecord{Removed: true, Temp: true, raw: map[string]json.RawMessage{"state": json.RawMessage(state)}}
+		if IsClearedHistoryItem(r) {
+			t.Fatalf("state with retained activity was incorrectly treated as cleared: %s", state)
+		}
 	}
 }
 

@@ -183,7 +183,32 @@ func IsClearedHistoryItem(r HistoryRecord) bool {
 		return false
 	}
 	var state map[string]json.RawMessage
-	return json.Unmarshal(r.raw["state"], &state) == nil && len(state) == 0
+	if json.Unmarshal(r.raw["state"], &state) != nil {
+		return false
+	}
+	// Stremio's account API may fill an empty state back out with the twelve
+	// standard default values. Accept only those neutral defaults, never unknown
+	// fields or nonzero progress, so a partial wipe cannot be mistaken for success.
+	for name, raw := range state {
+		value := strings.TrimSpace(string(raw))
+		switch name {
+		case "duration", "episode", "flaggedWatched", "overallTimeWatched", "season", "timeOffset", "timeWatched", "timesWatched":
+			if value != "0" {
+				return false
+			}
+		case "noNotif":
+			if value != "false" {
+				return false
+			}
+		case "lastWatched", "video_id", "watched":
+			if value != "null" && value != `""` {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func copyAndPatchHistoryRecord(r *HistoryRecord, meta MediaMetadata, now time.Time, updates map[string]any) (map[string]json.RawMessage, error) {
