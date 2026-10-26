@@ -240,8 +240,16 @@ func (s WatchHistoryService) ForgetTitle(ctx context.Context, imdbID, mediaType 
 		return WatchDetail{}, false, err
 	}
 	confirmed, err := s.Account.GetOne(ctx, imdbID)
-	if err != nil || confirmed == nil || !IsClearedHistoryItem(*confirmed) || hasWatchActivity(*confirmed) {
-		return WatchDetail{}, false, errors.New("Stremio did not verify that the full playback state was cleared")
+	if err != nil {
+		return WatchDetail{}, false, fmt.Errorf("Stremio write completed but verification read failed: %w", err)
+	}
+	if confirmed == nil {
+		return WatchDetail{}, false, errors.New("Stremio did not return the removed title for verification")
+	}
+	if !IsClearedHistoryItem(*confirmed) || hasWatchActivity(*confirmed) {
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(confirmed.raw["state"], &fields)
+		return WatchDetail{}, false, fmt.Errorf("Stremio did not fully clear playback state (removed=%t, temp=%t, state_fields=%d, watch_activity=%t)", confirmed.Removed, confirmed.Temp, len(fields), hasWatchActivity(*confirmed))
 	}
 	return clearedWatchDetail(*confirmed), true, nil
 }
