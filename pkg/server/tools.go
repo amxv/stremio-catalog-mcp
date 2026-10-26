@@ -14,6 +14,7 @@ import (
 type Runtime struct {
 	Manager         catalog.Manager
 	Account         stremio.AccountAPI
+	HistoryMetadata stremio.MetadataClient
 	Store           *catalog.RedisStore
 	VisibilityStore catalog.Store
 	BaseURL         string
@@ -57,7 +58,7 @@ func (rt Runtime) sync(ctx context.Context) SyncStatus {
 			return SyncStatus{Message: "Saved but sync lock unavailable: " + err.Error()}
 		}
 		if !locked {
-		return SyncStatus{Message: "Saved; another account sync is running. Retry with catalogs_update using a sync action."}
+			return SyncStatus{Message: "Saved; another account sync is running. Retry with catalogs_update using a sync action."}
 		}
 		defer func() {
 			releaseCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -96,7 +97,7 @@ func catalogTool(name, description string) *mcp.Tool {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.3.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.4.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. With no parameters return compact row summaries; pass row_id for one row's ordered titles including saved poster URLs, or include_titles=true for every row's titles. include_install_url=true returns the private addon URL only when explicitly requested. Use home_layout_get for third-party addon rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
@@ -119,6 +120,12 @@ func serverFor(rt Runtime) *mcp.Server {
 	mcp.AddTool(s, catalogTool("home_layout_update", "Batch hide/show Home rows, reorder rows within any installed addon, and move complete addons. Provide exact IDs from home_layout_get. Use dry_run=true to preview. Preserves stream addons and backs up the account before saving."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input stremio.HomeUpdateInput) (*mcp.CallToolResult, HomeUpdateResult, error) {
 			result, err := rt.homeLayoutUpdate(ctx, input)
+			return nil, result, err
+		})
+
+	mcp.AddTool(s, catalogTool("watch_history", "Read/search Stremio watch history, inspect exact watched episodes (including watched-episode titles and plots), or mark movies and specific episodes watched/unwatched. Default action=get: no args lists recent history; query searches titles; imdb_id returns exact movie/season status and conservative spoiler_safe_through. To change status, action=mark_watched or mark_unwatched with imdb_id (or title query and media_type); series also requires season and explicit episodes=[1,2]. Never infer completion from partially viewed episodes; never return future-episode plot descriptions."),
+		func(ctx context.Context, _ *mcp.CallToolRequest, input WatchHistoryInput) (*mcp.CallToolResult, WatchHistoryResult, error) {
+			result, err := rt.watchHistory(ctx, input)
 			return nil, result, err
 		})
 	return s

@@ -33,12 +33,13 @@ func TestMCPToolAnnotations(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Result.Tools) != 4 {
-		t.Fatalf("expected exactly 4 tools, received %d", len(response.Result.Tools))
+	if len(response.Result.Tools) != 5 {
+		t.Fatalf("expected exactly 5 tools, received %d", len(response.Result.Tools))
 	}
 	expected := map[string]bool{
 		"catalogs_get": true, "catalogs_update": true,
 		"home_layout_get": true, "home_layout_update": true,
+		"watch_history": true,
 	}
 	for _, tool := range response.Result.Tools {
 		if !expected[tool.Name] {
@@ -53,7 +54,7 @@ func TestMCPToolAnnotations(t *testing.T) {
 			if _, present := tool.Annotations["openWorldHint"]; present {
 				t.Fatalf("tool %q must omit openWorldHint, not set it to false", tool.Name)
 			}
-			if tool.Name == "home_layout_update" || tool.Name == "catalogs_update" || tool.Name == "catalogs_get" {
+			if tool.Name == "home_layout_update" || tool.Name == "catalogs_update" || tool.Name == "catalogs_get" || tool.Name == "watch_history" {
 				var input struct {
 					Properties map[string]json.RawMessage `json:"properties"`
 				}
@@ -65,6 +66,8 @@ func TestMCPToolAnnotations(t *testing.T) {
 					fields = []string{"changes", "dry_run", "expected_revision", "request_id"}
 				} else if tool.Name == "catalogs_get" {
 					fields = []string{"row_id", "include_titles", "include_install_url"}
+				} else if tool.Name == "watch_history" {
+					fields = []string{"action", "query", "imdb_id", "media_type", "season", "episodes", "limit", "offset"}
 				}
 				for _, field := range fields {
 					if len(input.Properties[field]) == 0 {

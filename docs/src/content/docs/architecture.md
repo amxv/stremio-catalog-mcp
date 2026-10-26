@@ -64,7 +64,7 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 
 **Tool annotations aren't permissions.** Some clients will see `readOnlyHint: true`, but several tools really do edit or delete rows. Treat these as write-capable operations and rely on the actual API key and the user's approval policy, not metadata hints.
 
-Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Scheduled recommendations, watch-history imports, playback controls, and multi-tenant account management are outside this service's scope.
+Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Watch history is read from Stremio's datastore; episode completion uses its anchored compressed bitfield and canonical Cinemeta episode ordering. `mark_watched` / `mark_unwatched` update only the targeted library item through datastorePut, preserving unrelated episode completion bits, current playback position, and unknown fields, then verify a subsequent read. Scheduled recommendations, cross-app history imports, playback controls, and multi-tenant account management are outside this service's scope.
 
 ## Code map and upstream references
 

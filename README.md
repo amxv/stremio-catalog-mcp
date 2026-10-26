@@ -8,7 +8,9 @@
 
 Ask your assistant to find something to watch, then send the results to Stremio. It can create, rename, reorder, refresh, clear, and delete custom catalog rows, and add or remove individual titles. **Home layout tools** can show/hide compatible rows from Cinemeta and other installed add-ons, reorder catalogs within each add-on, and rearrange whole add-ons. Existing Cinemeta metadata and streaming add-ons keep working; this service supplies **catalogs only**, never streams or its own recommendations.
 
-The **four-tool interface** is simple: `catalogs_get`/`catalogs_update` manage the content of your own rows; `home_layout_get`/`home_layout_update` manage their visibility and order alongside other installed add-ons. Detailed catalog reads and update results include saved **poster URLs**, ready to show in chat. Catalog changes can be batched, previewed with `dry_run`, and retried safely using `request_id`.
+The **five-tool interface** stays focused: `catalogs_get`/`catalogs_update` manage your rows; `home_layout_get`/`home_layout_update` manage visibility and ordering; `watch_history` lets an agent search your Stremio watch history, check exactly which TV episodes are marked watched, and explicitly mark a movie or specific episode(s) **watched or unwatched**. Detailed catalog reads and update results include saved **poster URLs**. Catalog changes can be batched, previewed with `dry_run`, and retried safely using `request_id`.
+
+**Spoiler-aware TV context:** ask "How far have I watched Breaking Bad?" and the agent can check Stremio's episode-completion bitmap instead of guessing from the last episode opened. If only S01E01-E02 are confirmed, the tool returns that boundary alongside the episodes' titles and synopses, without future-episode descriptions. Ask "I already watched episode 3" or "Actually, I haven't seen episode 2" and the same tool can update Stremio in either direction. It requires `STREMIO_AUTH_KEY` and reflects Stremio's synced account state; missing or unmappable data is reported as unknown, never assumed unwatched.
 
 **IMDb ratings, runtimes, genres, cast, and descriptions show up automatically in the Stremio TV preview** when Cinemeta has that information. Agents still only provide titles or IMDb IDs. The Stremio catalog endpoint fetches full Cinemeta metadata and keeps a 24-hour Redis cache separate from the saved rows, including for catalogs created before this improvement. It does not install a competing metadata add-on, affect stream selection, or change the MCP tool interface. During an upstream outage, saved titles and posters still work, but some preview details may be unavailable until Cinemeta recovers.
 
@@ -44,7 +46,7 @@ Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row c
 - **Go + Vercel:** stateless Streamable HTTP MCP endpoint and standard Stremio catalog endpoints.
 - **Redis REST (Upstash-compatible):** durable, ordered rows and synchronization safeguards.
 - **Cinemeta:** IMDb ID lookup, with playback handled by your existing add-ons.
-- **Stremio account API:** optional account linking to add and rename rows and manage the Home layout; it is an unversioned integration and can require an app restart.
+- **Stremio account API:** optional account linking to add/rename rows, manage Home layout, and read/update watch status. The account API is unversioned; watch status reflects what Stremio has synced from your devices.
 
 One deployment manages **one Stremio account**. Keep all generated keys, Redis tokens, and the Stremio session private. See the website's [technical reference](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for security and limitations.
 

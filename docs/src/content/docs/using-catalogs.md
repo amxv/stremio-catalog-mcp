@@ -46,7 +46,7 @@ Your Android TV's focused-title header can show the **runtime, genre, cast, desc
 
 Changes to the **titles inside an existing row** generally appear when Stremio fetches that catalog again. New rows, renamed rows, and deleted rows require the account-sync integration or a manual add-on reinstall. Because Stremio caches data, you may need to refresh or restart the app.
 
-The MCP does **not** control playback, install streaming providers, track your watch history, or guarantee a title is available from a particular streaming service.
+The MCP does **not** control playback, install streaming providers, or guarantee a title is available from a particular streaming service. When the Stremio account is linked, `watch_history` can read watch status and mark movies or exact series episodes as watched or unwatched; it does not collect its own viewing analytics.
 
 ## Can I automate recommendations?
 

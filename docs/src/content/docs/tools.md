@@ -1,19 +1,54 @@
 ---
 title: MCP tools
-description: Four tools to manage catalog contents and the Stremio Home screen.
+description: Five tools to manage catalogs, the Stremio Home screen, and watch history.
 order: 3
 category: Guides
-summary: Two reads, two updates. Catalogs control what to watch; Home layout controls where it appears.
+summary: Catalogs, Home layout, and one spoiler-aware tool to read or mark watch history.
 ---
 
-The MCP exposes **four tools**. Your assistant can understand them directly from their names and descriptions:
+The MCP exposes **five tools**. Your assistant can understand them directly from their names and descriptions:
 
 | | Read | Update |
 | --- | --- | --- |
 | **Catalog contents** | `catalogs_get` | `catalogs_update` |
 | **Home arrangement** | `home_layout_get` | `home_layout_update` |
+| **Watch history** | `watch_history` (default `get`) | `watch_history` (`action: "mark_watched"` or `"mark_unwatched"`) |
 
-**Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons.
+**Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons. **Watch history** reads the Stremio account and updates explicit watched status; it never creates its own streaming or recommendation service.
+
+## Watch history and spoiler-safe episode status
+
+`watch_history({})` lists recent watched or in-progress movies and shows, omitting titles that are merely saved in the Library. To search your recorded history, use `watch_history({ "query": "Breaking Bad" })` (case-insensitive title substring). Add `limit` (1-50, default 20) and `offset` to page through results.
+
+For one specific show, use its IMDb ID:
+
+```json
+{ "imdb_id": "tt0903747", "season": 1 }
+```
+
+The result includes `watched_episodes`, `watched_episode_details` (titles and plot descriptions of confirmed watched episodes), `unconfirmed_episodes`, any `in_progress_episode`, and `spoiler_safe_through` (the last **consecutively** confirmed episode starting at S01E01). It also includes the show's premise/overview, plus a movie's plot description when that movie is watched. An episode merely opened or partly played does **not** count as completed. Unconfirmed episodes do not include plot descriptions or titles. For all seasons, omit `season`: you get every ordinary season's complete watched episode numbers, but only the **last eight watched episode synopses in episode order** to keep the response compact. Specify a season to retrieve all of that season's watched synopses, including `season: 0` for specials.
+
+`unconfirmed` means Stremio doesn't prove an episode is watched, **not** that it has never been watched. If Stremio has no record, the bitfield is corrupt, or its episode list cannot be matched safely, the result explicitly reports unknown/unverified status and never invents a spoiler boundary. Stremio stores one series-level `lastWatched` timestamp, not per-episode historical watch dates.
+
+The same tool marks a movie or exact episodes as watched when you say you've watched them:
+
+```json
+{ "action": "mark_watched", "imdb_id": "tt0816692", "media_type": "movie" }
+```
+
+```json
+{ "action": "mark_watched", "imdb_id": "tt0903747", "media_type": "series", "season": 1, "episodes": [1, 2] }
+```
+
+To reverse a watched marker, use exactly the same arguments and change `action` to `mark_unwatched`:
+
+```json
+{ "action": "mark_unwatched", "imdb_id": "tt0903747", "season": 1, "episodes": [2] }
+```
+
+For a title not already identified by IMDb ID, supply `query` and `media_type` (optionally `year`) instead. Ambiguous titles cannot be marked without disambiguation. For series, episode numbers must be **explicit**, even for one episode; there is no accidental whole-season or whole-show action. Repeating an already-satisfied watched or unwatched request is a no-op. Unwatching preserves the rest of your playback history, including any playback position; it does not delete the item from your Library. Existing playback, library details, and other account metadata are preserved. New watch records are temporary history items, not additions to your saved Library.
+
+Stremio account linking (`STREMIO_AUTH_KEY`) is required, and results reflect only that Stremio account's synced history, not other streaming apps. The service uses Stremio's unversioned datastore API and Cinemeta's canonical episode order, so behavior may depend on upstream API changes. It re-reads after writes to verify the updated status but cannot prevent concurrent changes on another Stremio device atomically.
 
 ## Inspect your catalogs
 
@@ -120,6 +155,6 @@ If automatic Stremio account linking isn't configured, `home_layout_get` shows y
 
 ## Security and synchronization
 
-The authenticated `?key=` URL grants write access. **The `catalogs_update` and `home_layout_update` tools really do write**, even though this server advertises `readOnlyHint: true` for all tools per its compatibility convention; the annotation is not an authorization boundary.
+The authenticated `?key=` URL grants write access. **The `catalogs_update`, `home_layout_update`, and `watch_history` (`mark_watched` and `mark_unwatched`) actions really do write**, even though this server advertises `readOnlyHint: true` for all tools per its compatibility convention; the annotation is not an authorization boundary.
 
 The server keeps private backups and read-after-write verification for Stremio account changes. Stremio account syncing uses an unversioned API; a saved catalog doesn't guarantee that an already-open TV has refreshed. See [Architecture and security](/docs/architecture).
