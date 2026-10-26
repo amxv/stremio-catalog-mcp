@@ -123,7 +123,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, result, err
 		})
 
-	mcp.AddTool(s, catalogTool("watch_history", "Read/search Stremio watch history, inspect exact watched episodes (including watched-episode titles and plots), or mark movies and specific episodes watched/unwatched. Default action=get: no args lists recent history; query searches titles; imdb_id returns exact movie/season status and conservative spoiler_safe_through. To change status, action=mark_watched or mark_unwatched with imdb_id (or title query and media_type); series also requires season and explicit episodes=[1,2]. Never infer completion from partially viewed episodes; never return future-episode plot descriptions."),
+	mcp.AddTool(s, catalogTool("watch_history", "Read/search Stremio watch history or update it. Default action=get lists recent history; imdb_id inspects a movie or exact watched episodes and spoiler_safe_through. mark_watched: movie by imdb_id, or series with season and explicit episodes=[1,2]. mark_unwatched: title without season/episodes completely resets ALL playback history (movie or series), marks it removed, and hides it from watch history; Stremio retains an empty sync tombstone because its API has no physical per-title deletion. With season AND episodes=[1,2], mark_unwatched selectively clears those episodes only. Use imdb_id or query plus media_type; never infer watched episodes from partial playback."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input WatchHistoryInput) (*mcp.CallToolResult, WatchHistoryResult, error) {
 			result, err := rt.watchHistory(ctx, input)
 			return nil, result, err

@@ -158,6 +158,9 @@ func (s WatchHistoryService) Inspect(ctx context.Context, imdbID string, season 
 }
 
 func (s WatchHistoryService) inspectRecord(ctx context.Context, r HistoryRecord, season *int) (WatchDetail, error) {
+	if IsClearedHistoryItem(r) {
+		return clearedWatchDetail(r), nil
+	}
 	detail := WatchDetail{
 		IMDbID: r.ID, Title: r.Name, MediaType: r.Type, Recorded: true,
 		LastActivity: r.State.LastWatched,
@@ -187,6 +190,60 @@ func (s WatchHistoryService) inspectRecord(ctx context.Context, r HistoryRecord,
 		return detail, nil
 	}
 	return episodeDetails(r, meta, season), nil
+}
+
+func clearedWatchDetail(r HistoryRecord) WatchDetail {
+	return WatchDetail{
+		IMDbID: r.ID, Title: r.Name, MediaType: r.Type,
+		Recorded: false, EpisodeHistory: "cleared",
+		Note: "All playback data for this title was cleared. Stremio retains a removed synchronization tombstone; its API does not expose per-title physical deletion.",
+	}
+}
+
+// ForgetTitle removes ALL Stremio playback history for one movie or series,
+// including episode bitfields, last-played video and position, timestamps,
+// duration and unrecognized state fields. Stremio's public client protocol
+// only supports datastorePut; physical deletion of individual library items
+// is unavailable. A removed temporary tombstone remains for synchronization.
+// This operation is intentionally separate from selective episode unwatching.
+func (s WatchHistoryService) ForgetTitle(ctx context.Context, imdbID, mediaType string) (WatchDetail, bool, error) {
+	if !validHistoryID(imdbID) {
+		return WatchDetail{}, false, errors.New("a valid imdb_id is required to clear a title")
+	}
+	previous, err := s.Account.GetOne(ctx, imdbID)
+	if err != nil {
+		return WatchDetail{}, false, err
+	}
+	if previous == nil {
+		return WatchDetail{IMDbID: imdbID, MediaType: mediaType, EpisodeHistory: "not_recorded", Note: "No Stremio record exists; no playback data was changed."}, false, nil
+	}
+	if mediaType != "" && previous.Type != mediaType {
+		return WatchDetail{}, false, errors.New("media_type conflicts with Stremio's saved title")
+	}
+	if IsClearedHistoryItem(*previous) {
+		return clearedWatchDetail(*previous), false, nil
+	}
+	// Stremio has no conditional update. Abort if another device changes the
+	// record between the initial read and the destructive rewrite.
+	latest, err := s.Account.GetOne(ctx, imdbID)
+	if err != nil {
+		return WatchDetail{}, false, err
+	}
+	if !reflect.DeepEqual(rawHistoryRecord(previous), rawHistoryRecord(latest)) {
+		return WatchDetail{}, false, errors.New("Stremio watch state changed while clearing; retry to avoid overwriting new playback")
+	}
+	item, err := ClearedHistoryItem(*previous, time.Now())
+	if err != nil {
+		return WatchDetail{}, false, err
+	}
+	if err := s.Account.Put(ctx, item); err != nil {
+		return WatchDetail{}, false, err
+	}
+	confirmed, err := s.Account.GetOne(ctx, imdbID)
+	if err != nil || confirmed == nil || !IsClearedHistoryItem(*confirmed) || hasWatchActivity(*confirmed) {
+		return WatchDetail{}, false, errors.New("Stremio did not verify that the full playback state was cleared")
+	}
+	return clearedWatchDetail(*confirmed), true, nil
 }
 
 func episodeDetails(r HistoryRecord, meta MediaMetadata, season *int) WatchDetail {
@@ -300,9 +357,13 @@ func (s WatchHistoryService) MarkWatched(ctx context.Context, imdbID, mediaType 
 	return s.setWatched(ctx, imdbID, mediaType, season, episodes, true)
 }
 
-// MarkUnwatched reverses explicit completion markers without changing any
-// unrelated episode bits or Stremio playback position.
+// MarkUnwatched reverses specific episodes without touching others. When no
+// episodes are supplied, it completely clears the title's playback state and
+// marks the record removed for synchronization across devices.
 func (s WatchHistoryService) MarkUnwatched(ctx context.Context, imdbID, mediaType string, season int, episodes []int) (WatchDetail, bool, error) {
+	if season == 0 && len(episodes) == 0 {
+		return s.ForgetTitle(ctx, imdbID, mediaType)
+	}
 	return s.setWatched(ctx, imdbID, mediaType, season, episodes, false)
 }
 

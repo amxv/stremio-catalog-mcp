@@ -13,13 +13,13 @@ import (
 // A single tool handles natural history requests as well as deliberate watched
 // updates. The default read needs no action or other parameters.
 type WatchHistoryInput struct {
-	Action    string `json:"action,omitempty" jsonschema:"get (default) to read/search; mark_watched or mark_unwatched to explicitly update a movie or listed episodes"`
+	Action    string `json:"action,omitempty" jsonschema:"get (default); mark_watched requires exact episodes for series; mark_unwatched with only a title clears ALL playback history, while season plus episodes selectively unwatches those episodes"`
 	Query     string `json:"query,omitempty" jsonschema:"Search history by movie/series title. For marking, accepts a title with media_type to resolve a unique IMDb ID"`
 	IMDbID    string `json:"imdb_id,omitempty" jsonschema:"Exact IMDb tt... ID; for get, returns episode-level progress of a series"`
 	MediaType string `json:"media_type,omitempty" jsonschema:"movie or series; required for marking a title not already in Stremio"`
 	Year      int    `json:"year,omitempty" jsonschema:"Optional release year when resolving a title to mark watched"`
-	Season    *int   `json:"season,omitempty" jsonschema:"Filter a show's watched episodes to one season; required for marking series episodes, including season 0 specials"`
-	Episodes  []int  `json:"episodes,omitempty" jsonschema:"Explicit episode numbers to mark watched or unwatched within season, e.g. [1,2]. Required for any series update; never automatically marks a whole season"`
+	Season    *int   `json:"season,omitempty" jsonschema:"Filter get by season, or select exact episodes for a series update; omit for full-title mark_unwatched history reset"`
+	Episodes  []int  `json:"episodes,omitempty" jsonschema:"Explicit episode numbers for scoped updates, e.g. [1,2]; omit with season to reset ALL playback history for a movie or entire series with mark_unwatched"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum history results, 1-50 (default 20)"`
 	Offset    int    `json:"offset,omitempty" jsonschema:"Skip this many matching history results for pagination"`
 }
@@ -87,8 +87,11 @@ func (rt Runtime) watchHistory(ctx context.Context, input WatchHistoryInput) (Wa
 		if input.Season == nil && len(input.Episodes) > 0 {
 			return WatchHistoryResult{}, errors.New("episode updates require an explicit season")
 		}
-		if input.MediaType == "series" && (input.Season == nil || len(input.Episodes) == 0) {
-			return WatchHistoryResult{}, errors.New("series updates require an explicit season and episodes list")
+		if input.Season != nil && len(input.Episodes) == 0 {
+			return WatchHistoryResult{}, errors.New("season requires explicitly selected episodes; omit both to clear an entire title with mark_unwatched")
+		}
+		if input.Action == "mark_watched" && input.MediaType == "series" && (input.Season == nil || len(input.Episodes) == 0) {
+			return WatchHistoryResult{}, errors.New("mark_watched on a series requires an explicit season and episodes list")
 		}
 		season := 0
 		if input.Season != nil {
@@ -100,13 +103,23 @@ func (rt Runtime) watchHistory(ctx context.Context, input WatchHistoryInput) (Wa
 		var detail stremio.WatchDetail
 		var changed bool
 		var err error
-		if input.Action == "mark_unwatched" {
+		clearEntireTitle := input.Action == "mark_unwatched" && input.Season == nil && len(input.Episodes) == 0
+		if clearEntireTitle {
+			detail, changed, err = svc.ForgetTitle(ctx, id, input.MediaType)
+		} else if input.Action == "mark_unwatched" {
 			detail, changed, err = svc.MarkUnwatched(ctx, id, input.MediaType, season, input.Episodes)
 		} else {
 			detail, changed, err = svc.MarkWatched(ctx, id, input.MediaType, season, input.Episodes)
 		}
 		if err != nil {
 			return WatchHistoryResult{}, err
+		}
+		if clearEntireTitle {
+			message := "No new playback data was cleared; the title was already reset or has no Stremio record."
+			if changed {
+				message = "Cleared all playback history and removed the title from the Stremio library; Stremio retains a removed synchronization tombstone (per-title physical deletion is unsupported). Verified by reading back."
+			}
+			return WatchHistoryResult{Action: input.Action, Changed: changed, Detail: &detail, Message: message}, nil
 		}
 		status := "watched"
 		if input.Action == "mark_unwatched" {

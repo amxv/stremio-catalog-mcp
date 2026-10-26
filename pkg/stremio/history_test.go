@@ -288,23 +288,60 @@ func TestWatchHistoryDefaultRecapIsCompactAndSeasonSelectionIsComplete(t *testin
 	}
 }
 
-func TestWatchHistoryMarkUnwatchedMoviePreservesPlaybackAndNoops(t *testing.T) {
+func TestWatchHistoryMarkUnwatchedMovieClearsPlaybackAndNoops(t *testing.T) {
 	f, svc := newHistoryFixture(t)
 	f.metaData = map[string]any{"id": "tt7654321", "name": "A Fictional Film", "type": "movie", "description": "An imagined plot."}
 	f.set(t, "tt7654321", "movie", `{"timesWatched":3,"flaggedWatched":1,"timeOffset":7000,"duration":30000,"lastWatched":"2026-01-02T00:00:00Z","customPlayback":"keep"}`)
 	detail, changed, err := svc.MarkUnwatched(context.Background(), "tt7654321", "movie", 0, nil)
-	if err != nil || !changed || detail.MovieWatched == nil || *detail.MovieWatched || !detail.MovieInProgress {
-		t.Fatalf("movie status not cleared while keeping playback: %+v changed=%v err=%v", detail, changed, err)
+	if err != nil || !changed || detail.Recorded || detail.EpisodeHistory != "cleared" {
+		t.Fatalf("movie history must be cleared: %+v changed=%v err=%v", detail, changed, err)
 	}
 	item := f.raw(t, "tt7654321")
 	var state map[string]any
 	_ = json.Unmarshal(item["state"], &state)
-	if state["timesWatched"] != float64(0) || state["flaggedWatched"] != float64(0) || state["timeOffset"] != float64(7000) || state["customPlayback"] != "keep" || state["lastWatched"] != "2026-01-02T00:00:00Z" || !strings.Contains(string(item["custom_field"]), `"preserve":true`) {
-		t.Fatalf("movie unwatch modified unrelated state: %+v", state)
+	if len(state) != 0 || string(item["removed"]) != "true" || string(item["temp"]) != "true" || !strings.Contains(string(item["custom_field"]), `"preserve":true`) {
+		t.Fatalf("movie unwatch failed to clear all playback or preserve non-playback metadata: item=%+v state=%+v", item, state)
 	}
 	_, changed, err = svc.MarkUnwatched(context.Background(), "tt7654321", "", 0, nil)
 	if err != nil || changed || f.writes != 1 {
 		t.Fatalf("idempotent movie unwatch failed: %v changed=%v writes=%d", err, changed, f.writes)
+	}
+	byID, err := svc.Inspect(context.Background(), "tt7654321", nil)
+	if err != nil || byID.Recorded || byID.EpisodeHistory != "cleared" {
+		t.Fatalf("cleared movie still exposed as watch history: %+v err=%v", byID, err)
+	}
+}
+
+func TestWatchHistoryMarkUnwatchedWholeSeriesClearsEvenCorruptBitfields(t *testing.T) {
+	f, svc := newHistoryFixture(t)
+	// A full reset does not need Cinemeta's episode list or a valid watched
+	// bitfield. This matters when metadata is unavailable or old episode IDs
+	// have changed; scoped unwatching must still refuse unmappable bitfields.
+	f.set(t, "tt1234567", "series", `{"watched":"corrupt-bitfield","video_id":"tt1234567:2:3","timeOffset":42000,"duration":54000,"lastWatched":"2026-01-02T00:00:00Z","timeWatched":900000,"overallTimeWatched":5400000,"customPlayback":{"data":"private"}}`)
+	f.set(t, "tt7654321", "movie", `{"timesWatched":1,"timeOffset":9000}`)
+	d, changed, err := svc.MarkUnwatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err != nil || !changed || d.Recorded || d.EpisodeHistory != "cleared" {
+		t.Fatalf("complete series reset failed: %+v changed=%v err=%v", d, changed, err)
+	}
+	item := f.raw(t, "tt1234567")
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(item["state"], &state); err != nil || len(state) != 0 {
+		t.Fatalf("series retains playback state after clear: %+v %v", state, err)
+	}
+	if string(item["removed"]) != "true" || string(item["temp"]) != "true" {
+		t.Fatalf("series tombstone not synchronized: %+v", item)
+	}
+	recent, _, err := svc.Search(context.Background(), WatchSearch{Limit: 20})
+	if err != nil || len(recent) != 1 || recent[0].IMDbID != "tt7654321" {
+		t.Fatalf("cleared title still appears in watch history or another title was affected: %+v %v", recent, err)
+	}
+	detail, err := svc.Inspect(context.Background(), "tt1234567", nil)
+	if err != nil || detail.Recorded || detail.EpisodeHistory != "cleared" {
+		t.Fatalf("series lookup did not report cleared state: %+v err=%v", detail, err)
+	}
+	_, changed, err = svc.MarkUnwatched(context.Background(), "tt1234567", "series", 0, nil)
+	if err != nil || changed || f.writes != 1 {
+		t.Fatalf("clearing an already-cleared series should be idempotent: changed=%t writes=%d err=%v", changed, f.writes, err)
 	}
 }
 
@@ -317,6 +354,10 @@ func TestWatchHistoryMarkUnwatchedMissingRecordDoesNotCreateHistory(t *testing.T
 	d, changed, err = svc.MarkUnwatched(context.Background(), "tt7654321", "series", 1, []int{1})
 	if err != nil || changed || d.EpisodeHistory != "not_recorded" || f.writes != 0 {
 		t.Fatalf("unwatching unknown episode created a record: %+v changed=%v err=%v", d, changed, err)
+	}
+	d, changed, err = svc.MarkUnwatched(context.Background(), "tt7654321", "series", 0, nil)
+	if err != nil || changed || d.EpisodeHistory != "not_recorded" || f.writes != 0 {
+		t.Fatalf("clearing an unknown series created a record: %+v changed=%v err=%v", d, changed, err)
 	}
 }
 

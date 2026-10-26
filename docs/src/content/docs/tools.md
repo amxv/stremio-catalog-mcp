@@ -40,13 +40,23 @@ The same tool marks a movie or exact episodes as watched when you say you've wat
 { "action": "mark_watched", "imdb_id": "tt0903747", "media_type": "series", "season": 1, "episodes": [1, 2] }
 ```
 
-To reverse a watched marker, use exactly the same arguments and change `action` to `mark_unwatched`:
+To reverse **specific episodes only** without changing playback position or other episodes, use `mark_unwatched` with both `season` and `episodes`:
 
 ```json
 { "action": "mark_unwatched", "imdb_id": "tt0903747", "season": 1, "episodes": [2] }
 ```
 
-For a title not already identified by IMDb ID, supply `query` and `media_type` (optionally `year`) instead. Ambiguous titles cannot be marked without disambiguation. For series, episode numbers must be **explicit**, even for one episode; there is no accidental whole-season or whole-show action. Repeating an already-satisfied watched or unwatched request is a no-op. Unwatching preserves the rest of your playback history, including any playback position; it does not delete the item from your Library. Existing playback, library details, and other account metadata are preserved. New watch records are temporary history items, not additions to your saved Library.
+To clear **an entire movie or TV series** from your Stremio watch history, omit both `season` and `episodes`:
+
+```json
+{ "action": "mark_unwatched", "imdb_id": "tt0903747" }
+```
+
+This deliberately clears **all** playback state for the title: watched episodes, movie watched flags, last played video, playback offset/duration, time watched, and last watched timestamps. It also marks the library item removed/temporary to hide it from the Library and watch-history views. The MCP re-reads the record after the write to verify that no playback state remains. Repeating the action is a no-op. Clearing a TV series does not require its episode list, so it can work even if the stored watched bitfield is corrupt or outdated.
+
+**Stremio API limitation:** there is no supported per-item hard-delete endpoint. Stremio keeps a minimal *removed synchronization tombstone* containing the title ID and metadata. `mark_unwatched` removes the playback history, **not** the underlying tombstone from Stremio's servers. A physical erasure of a title's last server-side record cannot be guaranteed through the API.
+
+For a title not already identified by IMDb ID, supply `query` and `media_type` (optionally `year`) instead. Ambiguous titles cannot be marked without disambiguation. **Marking a series watched** always requires explicit season and episode numbers. **Unwatching specific episodes** also requires both. The title-wide `mark_unwatched` form is intentionally destructive: leave `season` and `episodes` out only when the user wants the whole title cleared. New watched records are temporary history items, not additions to your saved Library.
 
 Stremio account linking (`STREMIO_AUTH_KEY`) is required, and results reflect only that Stremio account's synced history, not other streaming apps. The service uses Stremio's unversioned datastore API and Cinemeta's canonical episode order, so behavior may depend on upstream API changes. It re-reads after writes to verify the updated status but cannot prevent concurrent changes on another Stremio device atomically.
 
@@ -157,4 +167,4 @@ If automatic Stremio account linking isn't configured, `home_layout_get` shows y
 
 The authenticated `?key=` URL grants write access. **The `catalogs_update`, `home_layout_update`, and `watch_history` (`mark_watched` and `mark_unwatched`) actions really do write**, even though this server advertises `readOnlyHint: true` for all tools per its compatibility convention; the annotation is not an authorization boundary.
 
-The server keeps private backups and read-after-write verification for Stremio account changes. Stremio account syncing uses an unversioned API; a saved catalog doesn't guarantee that an already-open TV has refreshed. See [Architecture and security](/docs/architecture).
+Home-layout changes keep private backups; watch-history changes use Stremio's per-item datastore with immediate re-read verification. Stremio account syncing uses an unversioned API; a saved catalog doesn't guarantee that an already-open TV has refreshed. See [Architecture and security](/docs/architecture).

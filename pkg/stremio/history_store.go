@@ -28,6 +28,8 @@ type HistoryRecord struct {
 	Poster   string `json:"poster"`
 	Year     string `json:"year"`
 	Modified string `json:"_mtime"`
+	Removed  bool   `json:"removed"`
+	Temp     bool   `json:"temp"`
 	State    struct {
 		LastWatched    string `json:"lastWatched"`
 		TimesWatched   int    `json:"timesWatched"`
@@ -145,6 +147,43 @@ func (h HistoryAccount) Put(ctx context.Context, item map[string]json.RawMessage
 		return errors.New("Stremio did not confirm the watch-history update")
 	}
 	return nil
+}
+
+// ClearedHistoryItem produces the strongest per-title reset supported by
+// Stremio's datastore API. Stremio exposes Meta/Get/Put, not item deletion;
+// keeping a removed temporary tombstone is necessary for cross-device sync.
+// The entire playback state is discarded, including unknown playback fields.
+func ClearedHistoryItem(r HistoryRecord, now time.Time) (map[string]json.RawMessage, error) {
+	encoded, err := json.Marshal(r.raw)
+	if err != nil {
+		return nil, err
+	}
+	var item map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &item); err != nil {
+		return nil, err
+	}
+	for name, value := range map[string]any{
+		"removed": true, "temp": true, "state": map[string]any{},
+		"_mtime": now.UTC().Format(time.RFC3339Nano),
+	} {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		item[name] = raw
+	}
+	return item, nil
+}
+
+// IsClearedHistoryItem distinguishes a complete playback-state reset from a
+// temporary item that still has watched markers. It remains a datastore
+// tombstone, not physical deletion of the record from Stremio's servers.
+func IsClearedHistoryItem(r HistoryRecord) bool {
+	if !r.Removed || !r.Temp {
+		return false
+	}
+	var state map[string]json.RawMessage
+	return json.Unmarshal(r.raw["state"], &state) == nil && len(state) == 0
 }
 
 func copyAndPatchHistoryRecord(r *HistoryRecord, meta MediaMetadata, now time.Time, updates map[string]any) (map[string]json.RawMessage, error) {
