@@ -249,7 +249,14 @@ func (s WatchHistoryService) ForgetTitle(ctx context.Context, imdbID, mediaType 
 	if !IsClearedHistoryItem(*confirmed) || hasWatchActivity(*confirmed) {
 		var fields map[string]json.RawMessage
 		_ = json.Unmarshal(confirmed.raw["state"], &fields)
-		return WatchDetail{}, false, fmt.Errorf("Stremio did not fully clear playback state (removed=%t, temp=%t, state_fields=%d, watch_activity=%t)", confirmed.Removed, confirmed.Temp, len(fields), hasWatchActivity(*confirmed))
+		fieldStatus := make([]string, 0, len(fields))
+		for name, raw := range fields {
+			value := strings.TrimSpace(string(raw))
+			empty := value == "null" || value == "false" || value == "0" || value == `""` || value == "[]" || value == "{}"
+			fieldStatus = append(fieldStatus, fmt.Sprintf("%s:empty=%t", name, empty))
+		}
+		sort.Strings(fieldStatus)
+		return WatchDetail{}, false, fmt.Errorf("Stremio did not fully clear playback state (removed=%t, temp=%t, watch_activity=%t, field_defaults=[%s])", confirmed.Removed, confirmed.Temp, hasWatchActivity(*confirmed), strings.Join(fieldStatus, ","))
 	}
 	return clearedWatchDetail(*confirmed), true, nil
 }
