@@ -23,6 +23,8 @@ The assistant does all the **research and recommendations** using its normal too
 
 It advertises Stremio's **catalog** resource, not `meta`, `stream`, or `subtitles`. Each item uses a standard IMDb `tt...` ID with `movie` or `series` type, so Stremio's existing Cinemeta metadata and streaming providers can handle the same titles. Cinemeta search is used only to resolve supplied titles and posters, rejecting ambiguous matches.
 
+When the TV requests a custom catalog, the server also reads each title's full Cinemeta metadata and includes standard Stremio preview fields such as `runtime`, `description`, `background`, `releaseInfo`, `imdbRating`, and `links`. Android TV uses `links` with category `imdb` for its rating icon and `Genres`/`Cast` for the adjacent information. A separate 24-hour Redis cache keyed by catalog row avoids repeating Cinemeta requests on normal browsing. Cache misses fetch only missing titles in parallel, bounded by a request timeout. Failures fall back to the originally saved title/year/poster without altering the user's row, revision, or MCP tool arguments. This also upgrades already-existing rows on their next fetch.
+
 ## Updating titles versus rows
 
 Rows have stable IDs, names, type, position, and ordered titles. The Go MCP endpoint validates tool calls and uses Redis compare-and-swap, so concurrent updates don't silently overwrite each other. It supports up to 24 rows and 100 titles per row.

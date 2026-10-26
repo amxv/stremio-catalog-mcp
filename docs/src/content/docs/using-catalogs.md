@@ -42,6 +42,8 @@ Your assistant can list all saved rows, append or remove individual titles, repl
 
 Each row contains **movies or TV series**, not a mixture. If you ask for both, your assistant should create separate rows. Titles use IMDb IDs compatible with Cinemeta and your installed streaming add-ons.
 
+Your Android TV's focused-title header can show the **runtime, genre, cast, description, and IMDb rating** for items in custom rows. The catalog endpoint fills in those details automatically from Cinemeta when Stremio requests a row; you don't have to include any metadata when asking your assistant to add titles. Existing rows receive the same enhancement, without needing to remove and recreate them. If Cinemeta lacks a rating for a title, that part of the preview will be omitted. Metadata is cached for 24 hours to keep browsing quick and reduce calls to Cinemeta.
+
 Changes to the **titles inside an existing row** generally appear when Stremio fetches that catalog again. New rows, renamed rows, and deleted rows require the account-sync integration or a manual add-on reinstall. Because Stremio caches data, you may need to refresh or restart the app.
 
 The MCP does **not** control playback, install streaming providers, track your watch history, or guarantee a title is available from a particular streaming service.

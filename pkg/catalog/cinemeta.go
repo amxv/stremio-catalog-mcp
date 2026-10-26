@@ -32,6 +32,51 @@ type meta struct {
 	ReleaseInfo string `json:"releaseInfo"`
 }
 
+// PreviewLink is the standard Stremio metadata link. Android TV reads links
+// with categories "imdb", "Genres", and "Cast" from catalog previews.
+type PreviewLink struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	URL      string `json:"url,omitempty"`
+}
+
+// Preview is fetched from Cinemeta when Stremio requests a custom catalog.
+// It is kept separate from the user-curated rows: agents only choose titles,
+// while runtime, genres, cast, ratings, and descriptions come from Cinemeta.
+type Preview struct {
+	ID          string        `json:"id"`
+	Type        string        `json:"type"`
+	Poster      string        `json:"poster,omitempty"`
+	Background  string        `json:"background,omitempty"`
+	Description string        `json:"description,omitempty"`
+	ReleaseInfo string        `json:"releaseInfo,omitempty"`
+	Runtime     string        `json:"runtime,omitempty"`
+	IMDBRating  string        `json:"imdbRating,omitempty"`
+	Links       []PreviewLink `json:"links,omitempty"`
+}
+
+type PreviewResolver interface {
+	FetchPreview(context.Context, string, string) (Preview, error)
+}
+
+// FetchPreview reads complete Cinemeta metadata, not the sparse search result.
+// It validates the returned identity before any details reach the catalog.
+func (c Cinemeta) FetchPreview(ctx context.Context, mediaType, id string) (Preview, error) {
+	if !ValidType(mediaType) || !ValidIMDbID(id) {
+		return Preview{}, errors.New("invalid Cinemeta preview type or IMDb ID")
+	}
+	var response struct {
+		Meta Preview `json:"meta"`
+	}
+	if err := c.fetch(ctx, "/meta/"+mediaType+"/"+id+".json", &response); err != nil {
+		return Preview{}, err
+	}
+	if response.Meta.ID != id || (response.Meta.Type != "" && response.Meta.Type != mediaType) {
+		return Preview{}, fmt.Errorf("Cinemeta returned unexpected preview identity for %s", id)
+	}
+	return response.Meta, nil
+}
+
 func (c Cinemeta) fetch(ctx context.Context, route string, out any) error {
 	base := c.BaseURL
 	if base == "" {

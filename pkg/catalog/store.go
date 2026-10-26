@@ -102,6 +102,31 @@ func (s *RedisStore) Load(ctx context.Context) (string, error) {
 	return raw, nil
 }
 
+// Preview caches live in separate, expiring keys. They never change the
+// user-curated catalog state, revision, or the agent-facing MCP schema.
+func (s *RedisStore) LoadPreviewCache(ctx context.Context, rowID string) (string, error) {
+	if !strings.HasPrefix(rowID, "row_") {
+		return "", errors.New("invalid catalog row ID")
+	}
+	result, err := s.command(ctx, "GET", s.Key+":preview:"+rowID)
+	if err != nil || string(result) == "null" {
+		return "", err
+	}
+	var raw string
+	if err := json.Unmarshal(result, &raw); err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+func (s *RedisStore) SavePreviewCache(ctx context.Context, rowID, raw string, ttlSeconds int) error {
+	if !strings.HasPrefix(rowID, "row_") || ttlSeconds < 1 || ttlSeconds > 7*24*60*60 || len(raw) > 1<<20 {
+		return errors.New("invalid preview cache entry")
+	}
+	_, err := s.command(ctx, "SET", s.Key+":preview:"+rowID, raw, "EX", ttlSeconds)
+	return err
+}
+
 // Redis EVAL makes a whole-document replacement conditional on its prior value.
 // This avoids races between agents creating/updating rows in parallel.
 func (s *RedisStore) CAS(ctx context.Context, previous, next string) (bool, error) {

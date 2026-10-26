@@ -10,6 +10,8 @@ Ask your assistant to find something to watch, then send the results to Stremio.
 
 The **four-tool interface** is simple: `catalogs_get`/`catalogs_update` manage the content of your own rows; `home_layout_get`/`home_layout_update` manage their visibility and order alongside other installed add-ons. Detailed catalog reads and update results include saved **poster URLs**, ready to show in chat. Catalog changes can be batched, previewed with `dry_run`, and retried safely using `request_id`.
 
+**IMDb ratings, runtimes, genres, cast, and descriptions show up automatically in the Stremio TV preview** when Cinemeta has that information. Agents still only provide titles or IMDb IDs. The Stremio catalog endpoint fetches full Cinemeta metadata and keeps a 24-hour Redis cache separate from the saved rows, including for catalogs created before this improvement. It does not install a competing metadata add-on, affect stream selection, or change the MCP tool interface. During an upstream outage, saved titles and posters still work, but some preview details may be unavailable until Cinemeta recovers.
+
 For example: **“Hide Cinemeta's Popular and Featured rows, move my MCU row first, and place my catalog add-on above Cinemeta.”** `home_layout_get` lists the current layout; one batched `home_layout_update` call supports visibility changes, row moves, addon moves, and a no-write `dry_run` preview. Third-party rows without optional search/genre filters cannot be safely hidden. Individual rows cannot be moved across addon boundaries, although complete addons can be reordered.
 
 ## Let your agent set it up

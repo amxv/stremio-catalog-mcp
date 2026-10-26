@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/amxv/stremio-catalog-mcp/pkg/catalog"
@@ -76,6 +75,7 @@ func EqualToken(want, got string) bool {
 type Handler struct {
 	Manager   catalog.Manager
 	FeedToken string
+	Preview   PreviewEnricher
 }
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -140,16 +140,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		metadata := h.Preview.RowMetadata(r.Context(), *row)
 		var metas []map[string]any
 		for _, item := range row.Items {
-			preview := map[string]any{"id": item.ID, "type": item.Type, "name": item.Title}
-			if item.Poster != "" {
-				preview["poster"] = item.Poster
-			}
-			if item.Year > 0 {
-				preview["releaseInfo"] = strconv.Itoa(item.Year)
-			}
-			metas = append(metas, preview)
+			metas = append(metas, buildPreview(item, metadata[item.ID]))
 		}
 		if metas == nil {
 			metas = []map[string]any{}
