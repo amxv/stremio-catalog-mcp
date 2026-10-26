@@ -58,6 +58,7 @@ type historyFixture struct {
 	mu              sync.Mutex
 	items           map[string]json.RawMessage
 	writes          int
+	gets            int
 	normalizeResets bool
 	metaData        map[string]any
 	server          *httptest.Server
@@ -91,6 +92,7 @@ func newHistoryFixture(t *testing.T) (*historyFixture, WatchHistoryService) {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"result": entries})
 		case "/api/datastoreGet":
+			f.gets++
 			var items []json.RawMessage
 			for _, id := range request.IDs {
 				if item := f.items[id]; item != nil {

@@ -3,7 +3,7 @@ title: MCP tools
 description: Five tools to manage catalogs, the Stremio Home screen, and watch history.
 order: 3
 category: Guides
-summary: Catalogs, Home layout, and one spoiler-aware tool to read or mark watch history.
+summary: Catalogs, Home layout, and IMDb-only watch-history reads, batch checks, and updates.
 ---
 
 The MCP exposes **five tools**. Your assistant can understand them directly from their names and descriptions:
@@ -12,13 +12,15 @@ The MCP exposes **five tools**. Your assistant can understand them directly from
 | --- | --- | --- |
 | **Catalog contents** | `catalogs_get` | `catalogs_update` |
 | **Home arrangement** | `home_layout_get` | `home_layout_update` |
-| **Watch history** | `watch_history` (default `get`) | `watch_history` (`action: "mark_watched"` or `"mark_unwatched"`) |
+| **Watch history** | `watch_history` (`get` or batch `check`) | `watch_history` (`mark_watched` or `mark_unwatched`) |
 
 **Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons. **Watch history** reads the Stremio account and updates explicit watched status; it never creates its own streaming or recommendation service.
 
 ## Watch history and spoiler-safe episode status
 
-`watch_history({})` lists recent watched or in-progress movies and shows, omitting titles that are merely saved in the Library. To search your recorded history, use `watch_history({ "query": "Breaking Bad" })` (case-insensitive title substring). Add `limit` (1-50, default 20) and `offset` to page through results.
+**All `watch_history` operations use IMDb IDs (`tt...`) exclusively.** Agents must identify the correct IMDb ID during discovery; there is no title-name lookup, `query`, or `year` parameter in this tool. This prevents mixing up remakes, similarly named shows, or movies and series with identical titles.
+
+`watch_history({})` lists recent watched or in-progress movies and shows, omitting titles merely saved in the Library. Add `limit` (1–50, default 20) and `offset` to page through results. Every returned title includes `imdb_id`.
 
 For one specific show, use its IMDb ID:
 
@@ -30,12 +32,42 @@ The result includes `watched_episodes`, `watched_episode_details` (titles and pl
 
 `unconfirmed` means Stremio doesn't prove an episode is watched, **not** that it has never been watched. If Stremio has no record, the bitfield is corrupt, or its episode list cannot be matched safely, the result explicitly reports unknown/unverified status and never invents a spoiler boundary. Stremio stores one series-level `lastWatched` timestamp, not per-episode historical watch dates.
 
-### Entire movie or series: just one tool call
+### Check a shortlist of recommendations in one call
 
-When someone says they've watched a movie **or an entire TV show**, use just `action: "mark_watched"` and its title or IMDb ID. **Do not look up seasons or episode numbers first.** For example:
+When recommending movies or TV shows, find their IMDb IDs **first**, then make a single targeted batch request:
 
 ```json
-{ "action": "mark_watched", "query": "Breaking Bad" }
+{
+  "action": "check",
+  "imdb_ids": ["tt0903747", "tt6751668", "tt9999999"]
+}
+```
+
+`check` accepts **1–50 unique IMDb IDs** and returns a `checks` array in the **same order** as the input. The server uses **one Stremio `datastoreGet` call** for precisely those IDs, rather than scanning every title in the account. For recorded TV shows it fetches canonical episode metadata concurrently, with a bounded worker pool, to decode the watched bitfield.
+
+Each result includes the IMDb ID, the saved title/type when known, whether Stremio has a playback record, and a `status`.
+
+**Fully watched TV shows return the same compact fields as fully watched movies.** There is no redundant season or episode list, no episode counts, and no spoiler boundary in the `check` result. A currently airing show counts as watched when all *released regular episodes* are complete; upcoming episodes do not prevent that status.
+
+**Partially watched TV shows return exact episode numbers**, grouped by season in `seasons[].watched_episodes` (e.g. `[1,2,4]`), along with any `in_progress_episode`. They do **not** return episode titles or plots. The `episode_history` field indicates `verified` or `unverified`; an empty watched list in an **unverified** result is **not proof** that none were completed. For partial shows, the response may include episode counts and `spoiler_safe_through`, expressed only as season/episode numbers. Use `get` with an individual `imdb_id` only when you specifically want its detailed watched-episode synopses.
+
+Status values are:
+
+| `status` | Meaning |
+| --- | --- |
+| `watched` | Movie marked completed, or every confirmed released regular episode of a series marked watched. Upcoming episodes and season-0 specials do not prevent this status. |
+| `partially_watched` | Some series episodes are marked watched or playback is in progress; for movies, an unfinished playback position is saved. |
+| `not_watched` | No watch completion or in-progress playback is recorded in this Stremio account, including when a title is absent or its history was cleared. **Not proof it was never viewed elsewhere.** |
+| `unverified` | Stremio has ambiguous/stale records, a corrupt watched bitfield, or inaccessible episode metadata; the server cannot safely determine completion. |
+
+If one series' metadata is unavailable, its result is `unverified` without hiding reliable results for the other IDs. The batch action never changes viewing history. Agents can exclude `watched` items from recommendations and distinguish `partially_watched` or `unverified` items instead of guessing.
+
+### Entire movie or series: just one tool call
+
+When someone says they've watched a movie **or an entire TV show**, use just `action: "mark_watched"` and its IMDb ID. **Do not look up seasons or episode numbers first.** For example:
+
+```json
+{ "action": "mark_watched", "imdb_id": "tt0903747" }
 ```
 
 ```json
@@ -47,7 +79,7 @@ For series, the server finds the canonical episodes from Cinemeta and updates al
 To clear **an entire movie or TV series** from your Stremio watch history in the same simple way:
 
 ```json
-{ "action": "mark_unwatched", "query": "Breaking Bad" }
+{ "action": "mark_unwatched", "imdb_id": "tt0903747" }
 ```
 
 This deliberately clears **all** playback state for the title: watched episodes, movie watched flags, last played video, playback offset/duration, time watched, and last watched timestamps. It also marks the library item removed/temporary to hide it from the Library and watch-history views. The MCP re-reads the record after the write to verify that no playback state remains. Repeating the action is a no-op. Clearing a TV series does not require its episode list, so it can work even if the stored watched bitfield is corrupt or outdated.
@@ -59,10 +91,6 @@ This deliberately clears **all** playback state for the title: watched episodes,
 For episode-specific corrections, optionally supply `season` and `episodes`. Mark a few episodes watched:
 
 ```json
-{ "action": "mark_watched", "imdb_id": "tt0816692", "media_type": "movie" }
-```
-
-```json
 { "action": "mark_watched", "imdb_id": "tt0903747", "media_type": "series", "season": 1, "episodes": [1, 2] }
 ```
 
@@ -72,7 +100,7 @@ To reverse **specific episodes only** without changing playback position or othe
 { "action": "mark_unwatched", "imdb_id": "tt0903747", "season": 1, "episodes": [2] }
 ```
 
-An exact title already in Stremio history resolves automatically without `media_type` or a separate search call. For a title not in history, the MCP attempts exact Cinemeta matches in movie and series catalogs. Supply `media_type` (optionally `year`) or an IMDb ID if the title is ambiguous. **Episode-specific** updates require explicit season and episode numbers; entire-title updates require neither. New watched records are temporary history items, not additions to your saved Library.
+For an IMDb ID already recorded in Stremio, `media_type` is optional. For a new ID, the server attempts to determine movie vs series from Cinemeta; `media_type` can be supplied if necessary. **Episode-specific** updates require explicit season and episode numbers; entire-title updates require neither. New watched records are temporary history items, not additions to your saved Library.
 
 Stremio account linking (`STREMIO_AUTH_KEY`) is required, and results reflect only that Stremio account's synced history, not other streaming apps. The service uses Stremio's unversioned datastore API and Cinemeta's canonical episode order, so behavior may depend on upstream API changes. It re-reads after writes to verify the updated status but cannot prevent concurrent changes on another Stremio device atomically.
 

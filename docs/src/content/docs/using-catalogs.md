@@ -46,10 +46,10 @@ Your Android TV's focused-title header can show the **runtime, genre, cast, desc
 
 Changes to the **titles inside an existing row** generally appear when Stremio fetches that catalog again. New rows, renamed rows, and deleted rows require the account-sync integration or a manual add-on reinstall. Because Stremio caches data, you may need to refresh or restart the app.
 
-The MCP does **not** control playback, install streaming providers, or guarantee a title is available from a particular streaming service. When the Stremio account is linked, `watch_history` can read watch status and mark movies or exact series episodes as watched or unwatched; it does not collect its own viewing analytics.
+The MCP does **not** control playback, install streaming providers, or guarantee a title is available from a particular streaming service. When the Stremio account is linked, `watch_history` uses IMDb IDs to inspect history, batch-check up to 50 prospective recommendations, or mark complete movies, series and specific episodes watched or unwatched. It does not collect its own viewing analytics.
 
 ## Can I automate recommendations?
 
 You can ask a scheduled AI task to research picks and update a stable *Tonight's Picks* row. Whether that task can call the MCP without extra approval depends on your assistant's scheduling, plugin, and permission settings. The Stremio server does not run its own recommendation scheduler.
 
-See [all four MCP tools](/docs/tools) for the exact operations your assistant can use.
+See [all five MCP tools](/docs/tools) for the exact operations your assistant can use.

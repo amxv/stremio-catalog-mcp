@@ -97,7 +97,7 @@ func catalogTool(name, description string) *mcp.Tool {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.5.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.6.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. With no parameters return compact row summaries; pass row_id for one row's ordered titles including saved poster URLs, or include_titles=true for every row's titles. include_install_url=true returns the private addon URL only when explicitly requested. Use home_layout_get for third-party addon rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
@@ -123,7 +123,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, result, err
 		})
 
-	mcp.AddTool(s, catalogTool("watch_history", "Read or edit live Stremio watch history in ONE call per title, no episode lookup required. Default action=get lists history or inspects an imdb_id. To fully watch ANY movie or TV show: action=mark_watched plus just query='Title' or imdb_id='tt...'; for series this checks all RELEASED regular episodes across all seasons, skipping future/unknown-release episodes and specials, in a single verified account write. To fully unwatch/remove a movie or TV show: action=mark_unwatched with just query or imdb_id; this clears all playback history and marks its record removed (Stremio retains a sync tombstone). To change only specific series episodes, supply season and episodes=[1,2] alongside either action. For exact saved title query, media_type is optional; ambiguous titles may need media_type/year or imdb_id. Read responses include watched episodes, plots of watched episodes and spoiler_safe_through. Never infer watched episodes from partial playback."),
+	mcp.AddTool(s, catalogTool("watch_history", "IMDb-ID-only Stremio watch history; title names, query and year are NOT accepted. Default action=get lists recent history (limit, offset) or reads one imdb_id including watched episode numbers, titles, plots and spoiler_safe_through. action=check with imdb_ids=['tt...','tt...'] checks 1-50 IMDb IDs in ONE call without scanning the account's full history; checks return watched, partially_watched, not_watched or unverified in input order. Fully watched TV shows return the SAME short status fields as fully watched movies, with NO episode list. Partially watched shows return exact watched episode NUMBERS by season, never episode plots/titles. A missing ID is not_watched in Stremio, not proof of never viewing elsewhere; corrupt/unreadable history is unverified. action=mark_watched with imdb_id marks a movie or every RELEASED regular episode of a series in one verified write, omitting future episodes and specials. action=mark_unwatched with imdb_id completely clears all history for that movie/series while retaining Stremio's necessary removed sync tombstone. Include season and episodes only to selectively edit exact episodes. media_type optional for recorded IMDb IDs; ambiguous or unknown types require verification. All statuses reflect the linked Stremio account."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input WatchHistoryInput) (*mcp.CallToolResult, WatchHistoryResult, error) {
 			result, err := rt.watchHistory(ctx, input)
 			return nil, result, err

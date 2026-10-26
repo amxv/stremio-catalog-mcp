@@ -68,7 +68,7 @@ func TestMCPToolAnnotations(t *testing.T) {
 				} else if tool.Name == "catalogs_get" {
 					fields = []string{"row_id", "include_titles", "include_install_url"}
 				} else if tool.Name == "watch_history" {
-					fields = []string{"action", "query", "imdb_id", "media_type", "season", "episodes", "limit", "offset"}
+					fields = []string{"action", "imdb_id", "imdb_ids", "media_type", "season", "episodes", "limit", "offset"}
 				}
 				for _, field := range fields {
 					if len(input.Properties[field]) == 0 {
@@ -76,9 +76,14 @@ func TestMCPToolAnnotations(t *testing.T) {
 					}
 				}
 				if tool.Name == "watch_history" {
-					for _, phrase := range []string{"ONE call", "mark_watched", "mark_unwatched", "RELEASED", "season", "episodes", "query"} {
+					for _, forbidden := range []string{"query", "year"} {
+						if _, ok := input.Properties[forbidden]; ok {
+							t.Errorf("watch_history must not offer title-based %s input", forbidden)
+						}
+					}
+					for _, phrase := range []string{"IMDb", "check", "imdb_ids", "mark_watched", "mark_unwatched", "episodes"} {
 						if !strings.Contains(tool.Description, phrase) {
-							t.Errorf("watch_history description must explain one-call whole-title behavior: missing %q", phrase)
+							t.Errorf("watch_history description must explain IMDb-only batch/whole-title behavior: missing %q", phrase)
 						}
 					}
 				}

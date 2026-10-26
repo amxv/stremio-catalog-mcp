@@ -95,7 +95,7 @@ func TestWatchHistoryWholeTitleUnwatchRequiresNoEpisodeList(t *testing.T) {
 	}
 }
 
-func TestWatchHistoryOneCallWithTitleMarksWholeSeriesAndResolvesUnknownMovie(t *testing.T) {
+func TestWatchHistoryOneCallWithIMDbIDMarksWholeSeriesAndResolvesUnknownMovie(t *testing.T) {
 	past := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
 	future := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
 	seriesID, movieID, newMovieID := "tt1234567", "tt7654321", "tt7654322"
@@ -172,24 +172,42 @@ func TestWatchHistoryOneCallWithTitleMarksWholeSeriesAndResolvesUnknownMovie(t *
 	defer api.Close()
 	rt := Runtime{Account: stremio.AccountAPI{BaseURL: api.URL, AuthKey: "test-key"}, HistoryMetadata: stremio.MetadataClient{BaseURL: api.URL}}
 
-	series, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", Query: "A Fictional Series"})
+	series, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", IMDbID: seriesID})
 	if err != nil || !series.Changed || series.Detail == nil || series.Detail.EpisodeHistory != "verified" || len(series.Detail.Seasons) != 1 || len(series.Detail.Seasons[0].WatchedEpisodes) != 2 || !strings.Contains(series.Message, "one Stremio write") || writes != 1 {
-		t.Fatalf("title-only full-series update must require only one tool call and one write: %+v err=%v writes=%d", series, err, writes)
+		t.Fatalf("ID-only full-series update must require only one tool call and one write: %+v err=%v writes=%d", series, err, writes)
 	}
 	again, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", IMDbID: seriesID})
 	if err != nil || again.Changed || writes != 1 {
 		t.Fatalf("repeat full-series update must be idempotent: %+v err=%v writes=%d", again, err, writes)
 	}
-	movie, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", Query: "A Fictional Movie"})
+	movie, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", IMDbID: movieID})
 	if err != nil || !movie.Changed || movie.Detail == nil || movie.Detail.MovieWatched == nil || !*movie.Detail.MovieWatched || writes != 2 {
-		t.Fatalf("unknown movie title should resolve uniquely without media_type: %+v err=%v writes=%d", movie, err, writes)
+		t.Fatalf("unknown movie IMDb ID should resolve without media_type: %+v err=%v writes=%d", movie, err, writes)
 	}
 	newMovie, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_watched", IMDbID: newMovieID})
 	if err != nil || !newMovie.Changed || newMovie.Detail == nil || newMovie.Detail.MovieWatched == nil || !*newMovie.Detail.MovieWatched || writes != 3 {
 		t.Fatalf("unknown IMDb ID should auto-resolve movie type in one call: %+v err=%v writes=%d", newMovie, err, writes)
 	}
-	cleared, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_unwatched", Query: "A Fictional Series"})
+	cleared, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "mark_unwatched", IMDbID: seriesID})
 	if err != nil || !cleared.Changed || cleared.Detail == nil || cleared.Detail.Recorded || writes != 4 {
-		t.Fatalf("title-only unwatch must clear the series: %+v err=%v writes=%d", cleared, err, writes)
+		t.Fatalf("ID-only unwatch must clear the series: %+v err=%v writes=%d", cleared, err, writes)
+	}
+	batch, err := rt.watchHistory(context.Background(), WatchHistoryInput{Action: "check", IMDbIDs: []string{movieID, seriesID, "tt9999999", newMovieID}})
+	if err != nil || batch.Action != "check" || batch.Count != 4 || len(batch.Checks) != 4 || writes != 4 {
+		t.Fatalf("batch check must read exactly the supplied IDs without writing: %+v err=%v", batch, err)
+	}
+	if batch.Checks[0].Status != "watched" || batch.Checks[1].Status != "not_watched" || batch.Checks[2].Status != "not_watched" || batch.Checks[3].Status != "watched" {
+		t.Fatalf("incorrect ordered batch statuses: %+v", batch.Checks)
+	}
+	for _, input := range []WatchHistoryInput{
+		{Action: "check", IMDbID: seriesID, IMDbIDs: []string{movieID}},
+		{Action: "check", IMDbIDs: []string{movieID}, Season: func() *int { n := 1; return &n }()},
+		{Action: "mark_watched", IMDbID: movieID, IMDbIDs: []string{seriesID}},
+		{Action: "get", IMDbIDs: []string{seriesID}},
+		{Action: "mark_watched"},
+	} {
+		if _, err := rt.watchHistory(context.Background(), input); err == nil {
+			t.Fatalf("invalid action/ID combination unexpectedly accepted: %+v", input)
+		}
 	}
 }
