@@ -142,6 +142,102 @@ func TestLookupBatchMatchesAndKeepsSmallResults(t *testing.T) {
 	}
 }
 
+func TestLookupPrefersDisplayedTitleOverUnrelatedOriginalTitle(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/3/search/multi":
+			fmt.Fprint(w, `{"results":[{"media_type":"movie","id":100,"title":"Dark Nemesis","original_title":"The Dark Knight","popularity":1000},{"media_type":"movie","id":200,"title":"The Dark Knight","popularity":100,"release_date":"2008-07-18","original_language":"en","genre_ids":[28,80]}]}`)
+		case "/3/movie/200/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt0468569"}`)
+		default:
+			t.Errorf("irrelevant title should not trigger an IMDb lookup: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	result, err := c.Lookup(context.Background(), Input{Titles: []string{"The Dark Knight"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.IMDbID != "tt0468569" || got.Title != "The Dark Knight" || got.Status != "" || len(got.Matches) != 0 || got.MoreMatches {
+		t.Fatalf("should resolve the displayed-title match without Dark Nemesis: %+v", got)
+	}
+}
+
+func TestLookupOneVerifiedIMDbIDIsNotAmbiguous(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/3/search/multi":
+			fmt.Fprint(w, `{"results":[{"media_type":"movie","id":1,"title":"Inception","release_date":"2010-07-16","original_language":"en","genre_ids":[28,878]},{"media_type":"movie","id":2,"title":"Inception","release_date":"2010-01-01"}]}`)
+		case "/3/movie/1/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt1375666"}`)
+		case "/3/movie/2/external_ids":
+			fmt.Fprint(w, `{"imdb_id":null}`)
+		default:
+			t.Errorf("unexpected TMDB request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	result, err := c.Lookup(context.Background(), Input{Titles: []string{"Inception"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.IMDbID != "tt1375666" || got.Title != "Inception" || got.Year != 2010 || got.Status != "" || len(got.Matches) != 0 {
+		t.Fatalf("only verified IMDb ID should return a flat, resolved result: %+v", got)
+	}
+}
+
+func TestLookupFallsBackToOriginalNameWhenNoDisplayedTitleMatches(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/3/search/multi":
+			fmt.Fprint(w, `{"results":[{"media_type":"movie","id":10,"title":"Amélie","original_title":"Le Fabuleux Destin d'Amélie Poulain","release_date":"2001-04-25"}]}`)
+		case "/3/movie/10/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt0211915"}`)
+		default:
+			t.Errorf("unexpected TMDB request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	result, err := c.Lookup(context.Background(), Input{Titles: []string{"Le Fabuleux Destin d'Amélie Poulain"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Results[0]; got.IMDbID != "tt0211915" || got.Title != "Amélie" || got.Status != "" {
+		t.Fatalf("original title should remain a fallback: %+v", got)
+	}
+}
+
+func TestLookupPreservesGenuineSameNameAmbiguity(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/3/search/multi":
+			fmt.Fprint(w, `{"results":[{"media_type":"movie","id":1,"title":"The Girl with the Dragon Tattoo","release_date":"2011-12-14","original_language":"en"},{"media_type":"movie","id":2,"title":"The Girl with the Dragon Tattoo","release_date":"2009-02-27","original_language":"sv"},{"media_type":"tv","id":3,"name":"The Girl with the Dragon Tattoo","original_language":"en"}]}`)
+		case "/3/movie/1/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt1568346"}`)
+		case "/3/movie/2/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt1132620"}`)
+		case "/3/tv/3/external_ids":
+			fmt.Fprint(w, `{"imdb_id":"tt12401288"}`)
+		default:
+			t.Errorf("unexpected TMDB request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	result, err := c.Lookup(context.Background(), Input{Titles: []string{"The Girl with the Dragon Tattoo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.Status != "ambiguous" || len(got.Matches) != 3 || got.IMDbID != "" {
+		t.Fatalf("three distinct exact matches must remain ambiguous: %+v", got)
+	}
+	if got.Matches[0].IMDbID != "tt1568346" || got.Matches[1].IMDbID != "tt1132620" || got.Matches[2].IMDbID != "tt12401288" {
+		t.Fatalf("wrong or missing match IDs: %+v", got.Matches)
+	}
+}
+
 func TestLookupNeverClaimsSingleMatchWhenOtherCandidateFails(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

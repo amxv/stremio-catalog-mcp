@@ -184,13 +184,14 @@ func (c *Client) lookupOne(ctx context.Context, query string) Item {
 	}
 
 	key := normalize(query)
-	var candidates []searchHit
+	var exact, originalTitle []searchHit
 	seen := make(map[string]bool)
 	for _, hit := range response.Results {
 		if (hit.MediaType != "movie" && hit.MediaType != "tv") || hit.ID <= 0 {
 			continue
 		}
-		if normalize(hit.displayTitle()) != key && normalize(hit.OriginalTitle) != key && normalize(hit.OriginalName) != key {
+		displayMatch := normalize(hit.displayTitle()) == key
+		if !displayMatch && normalize(hit.OriginalTitle) != key && normalize(hit.OriginalName) != key {
 			continue
 		}
 		unique := hit.MediaType + ":" + strconv.FormatInt(hit.ID, 10)
@@ -198,7 +199,18 @@ func (c *Client) lookupOne(ctx context.Context, query string) Item {
 			continue
 		}
 		seen[unique] = true
-		candidates = append(candidates, hit)
+		if displayMatch {
+			exact = append(exact, hit)
+		} else {
+			originalTitle = append(originalTitle, hit)
+		}
+	}
+	// Prefer titles shown to users. Alternate/original titles are useful for
+	// translated releases, but should not create false ambiguity when an
+	// exact displayed-title match exists (e.g. The Dark Knight).
+	candidates := exact
+	if len(candidates) == 0 {
+		candidates = originalTitle
 	}
 	if len(candidates) == 0 {
 		item.Status = "not_found"
@@ -256,7 +268,8 @@ func (c *Client) lookupOne(ctx context.Context, query string) Item {
 	}
 	if len(item.Matches) == 0 {
 		item.Status = "not_found" // TMDB titles may lack IMDb IDs.
-	} else if len(item.Matches) == 1 && len(candidates) == 1 {
+	} else if len(item.Matches) == 1 {
+		// Some TMDB entries lack IMDb IDs. They are not competing IMDb matches.
 		item.Match = item.Matches[0]
 		// A unique match needs only a release year, not a detailed synopsis/date.
 		item.ReleaseDate, item.Description = "", ""
