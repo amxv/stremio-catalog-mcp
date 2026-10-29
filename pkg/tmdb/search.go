@@ -102,8 +102,16 @@ func (c *Client) searchBoth(ctx context.Context, spec titleQuery) ([]searchHit, 
 }
 
 func eligible(h searchHit, spec titleQuery) bool {
-	if spec.Year != 0 && releaseYear(h.date()) != spec.Year {
-		return false
+	if spec.Year != 0 {
+		year := releaseYear(h.date())
+		if year != spec.Year {
+			// Premiere years and wide theatrical-release years can differ.
+			// Keep prominent adjacent-year works visible rather than silently
+			// preferring an obscure same-year adaptation (e.g. Crash).
+			if (year != spec.Year-1 && year != spec.Year+1) || h.VoteCount < 1000 {
+				return false
+			}
+		}
 	}
 	if spec.Country != "" {
 		found := false
@@ -141,6 +149,27 @@ func prominence(h searchHit) float64 {
 func sortedByProminence(hits []searchHit) {
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, b := prominence(hits[i]), prominence(hits[j])
+		if a == b {
+			return hits[i].ID < hits[j].ID
+		}
+		return a > b
+	})
+}
+
+func sortedByRelevance(hits []searchHit, spec titleQuery) {
+	if spec.Year == 0 {
+		sortedByProminence(hits)
+		return
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		score := func(hit searchHit) float64 {
+			value := prominence(hit)
+			if releaseYear(hit.date()) == spec.Year {
+				value += 4
+			}
+			return value
+		}
+		a, b := score(hits[i]), score(hits[j])
 		if a == b {
 			return hits[i].ID < hits[j].ID
 		}
@@ -201,8 +230,37 @@ func selectCandidates(hits []searchHit, spec titleQuery) []searchHit {
 	} else {
 		candidates = tiers[3]
 	}
-	sortedByProminence(candidates)
+	sortedByRelevance(candidates, spec)
 	return candidates
+}
+
+func selectFallbackCandidates(hits []searchHit, spec titleQuery, previous []searchHit) []searchHit {
+	maxTriedRank := -1
+	for _, hit := range previous {
+		if rank := rankTitle(hit, spec); rank > maxTriedRank {
+			maxTriedRank = rank
+		}
+	}
+	var next []searchHit
+	minRank := 100
+	for _, hit := range hits {
+		if !eligible(hit, spec) {
+			continue
+		}
+		rank := rankTitle(hit, spec)
+		if rank <= maxTriedRank || rank >= 4 {
+			continue
+		}
+		if rank < minRank {
+			minRank = rank
+			next = nil
+		}
+		if rank == minRank {
+			next = append(next, hit)
+		}
+	}
+	sortedByRelevance(next, spec)
+	return next
 }
 
 // Alternative titles are retrieved only for unresolved titles. Search already

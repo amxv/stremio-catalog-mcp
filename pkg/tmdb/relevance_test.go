@@ -227,6 +227,41 @@ func TestSuggestionsOnlyForUnresolvedTitles(t *testing.T) {
 	}
 }
 
+func TestExactTitleWithoutIMDbFallsBackToKnownAlias(t *testing.T) {
+	series := fixtureHit(10, "Intouchables", "2020-01-01", 10, 100)
+	film := fixtureHit(11, "The Intouchables", "2011-11-02", 9000, 90)
+	film.OriginalTitle = "Intouchables"
+	client, _ := fixtureClient(t, map[string]titleFixture{
+		"Intouchables": {Movies: []searchHit{film}, Shows: []searchHit{series}},
+	}, map[int64]string{11: "tt1675434"}, nil)
+	result, err := client.Lookup(context.Background(), Input{Titles: []string{"Intouchables"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.IMDbID != "tt1675434" || got.Status != "" || got.Title != "The Intouchables" {
+		t.Fatalf("unverified exact-title candidate must not hide the known film: %+v", got)
+	}
+}
+
+func TestPremiereVsTheatricalYearKeepsProminentAdaptation(t *testing.T) {
+	client, _ := fixtureClient(t, map[string]titleFixture{
+		"Crash": {Movies: []searchHit{
+			fixtureHit(1, "Crash", "2004-05-06", 20, 80),
+			fixtureHit(2, "Crash", "2005-05-06", 7500, 30),
+		}},
+	}, map[int64]string{1: "tt0801505", 2: "tt0375679"}, nil)
+	result, err := client.Lookup(context.Background(), Input{Titles: []string{"Crash (2004)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.Status != "ambiguous" || len(got.Matches) != 2 ||
+		got.Matches[0].IMDbID != "tt0375679" || got.Matches[1].IMDbID != "tt0801505" {
+		t.Fatalf("prominent film with a one-year date difference must remain visible: %+v", got)
+	}
+}
+
 func TestCrowdedShortTitleSearchChecksSecondPage(t *testing.T) {
 	var mu sync.Mutex
 	secondCalls := 0

@@ -209,6 +209,11 @@ func (c *Client) resolveOne(ctx context.Context, query string, spec titleQuery) 
 		item.Suggestions = titleSuggestions(hits, spec)
 		return item
 	}
+	return c.resolveCandidates(ctx, query, spec, hits, candidates)
+}
+
+func (c *Client) resolveCandidates(ctx context.Context, query string, spec titleQuery, hits, candidates []searchHit) Item {
+	item := Item{Query: query}
 	// Rank before limiting, and inspect more candidates than the six
 	// results displayed. Missing IMDb IDs must not consume a result slot.
 	item.MoreMatches = len(candidates) > maxCandidates
@@ -280,6 +285,13 @@ func (c *Client) resolveOne(ctx context.Context, query string, spec titleQuery) 
 	}
 	enrich.Wait()
 	if len(item.Matches) == 0 {
+		// A strict title hit can have no IMDb ID. Try the next genuine title
+		// tier before returning not_found (e.g. Intouchables / The Intouchables).
+		if !item.MoreMatches {
+			if fallback := selectFallbackCandidates(hits, spec, candidates); len(fallback) > 0 {
+				return c.resolveCandidates(ctx, query, spec, hits, fallback)
+			}
+		}
 		item.Status = "not_found" // TMDB titles may lack IMDb IDs.
 		item.Suggestions = titleSuggestions(hits, spec)
 	} else if len(item.Matches) == 1 && !item.MoreMatches {
