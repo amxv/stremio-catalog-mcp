@@ -77,3 +77,13 @@ Try asking ChatGPT:
 Open Stremio on your TV using the same account. Your new row should appear when Stremio refreshes its add-ons; restarting the app sometimes helps. Existing streaming add-ons handle playback.
 
 Next: [things to try](/docs/using-catalogs) · [MCP tools](/docs/tools)
+
+## Optional: have your agent connect an Android TV
+
+The base Stremio Catalog MCP needs **no TV companion or Firebase account** and exposes **five tools**. If you explicitly opt in, it can also open movie and series **details** (never autoplay) on **one paired Android TV** with the single extra tool `tv_open_title`.
+
+Once your normal MCP deployment is working, give your coding agent this instruction:
+
+> Follow https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote for **my** Vercel account and **my** Android TV. Provision a separate no-cost Firebase Spark project, opt in only on my existing Go API Vercel project, build and sideload the receiver over ADB, pair my TV through the private setup page, verify a real Firebase push opens a Stremio details page, then disconnect ADB. Never enable billing, expose secrets, start playback, or leave an always-on Mac or TV process. Ask me to authorize Google sign-in, TV debugging and the deployment as needed.
+
+The [TV remote guide](/docs/tv-remote) provides a full **agent execution checklist**, Firebase/GCloud and Vercel commands, Android build requirements, ADB connection options, pairing instructions, and end-to-end verification steps. A **second Google account is not required**; a separate Firebase project under the same Google account is sufficient. If you don't want TV control, **skip this entire step**—the default MCP remains unchanged.

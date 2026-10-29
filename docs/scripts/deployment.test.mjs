@@ -30,3 +30,25 @@ test('only Actions creates Vercel deployments', () => {
   assert.equal(config.git.deploymentEnabled, false);
   assert.equal(Object.hasOwn(config, 'ignoreCommand'), false);
 });
+
+test('TV docs are opt-in and guide an agent through Vercel, ADB and real-device verification', () => {
+  const guide = readFileSync(path.join(site, 'src/content/docs/tv-remote.md'), 'utf8');
+  const quickstart = readFileSync(path.join(site, 'src/content/docs/quickstart.md'), 'utf8');
+  for (const phrase of [
+    'TV_OPEN_ENABLED', 'five tools', '**six**', 'tv_open_title', 'TV_SETUP_KEY',
+    'FCM_SERVICE_ACCOUNT_JSON', 'firebase login', 'gcloud auth login',
+    'Spark', '/tv/setup', 'android-tv/app/google-services.json',
+    'adb pair', 'adb connect', 'adb devices -l', 'install -r',
+    'uiautomator dump', 'SYSTEM_ALERT_WINDOW allow', 'adb disconnect',
+    'accepted_by_fcm', 'Break' + 'ing Bad', 'Inception',
+  ]) {
+    assert.ok(guide.includes(phrase), `optional TV agent guide missing ${phrase}`);
+  }
+  assert.match(guide, /exactly one additional MCP tool/i);
+  assert.match(guide, /No.*MCP.*key.*TV/i);
+  assert.match(guide, /do not.*bill|no paid|billing/i);
+  assert.match(quickstart, /If you don't want TV control/);
+  const api = JSON.parse(readFileSync(path.join(repo, 'vercel.json'), 'utf8'));
+  assert.ok(api.rewrites.some(route => route.source === '/tv/setup'));
+  assert.ok(api.rewrites.some(route => route.source === '/tv/admin'));
+});

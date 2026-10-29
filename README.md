@@ -24,6 +24,8 @@ Want to say **"Open Inception on my TV"** and have Stremio display its details? 
 
 See **[Android TV remote setup, Firebase provisioning, and ADB sideloading](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote)**. This is an **experimental integration**: automatic navigation needs a user-granted background-launch exemption on supported Android TVs. Notification/manual-open fallback is available if the TV blocks it. Google Play Services must be installed. No actual TV behavior can be guaranteed by a build-only test.
 
+**Have your coding agent do it for you:** Start with the [agent-ready TV setup checklist](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote#start-here-give-these-instructions-to-your-coding-agent). It covers **your** Firebase Spark project, FCM-only sender, optional Vercel environment variables, a real Firebase-configured APK, ADB sideloading, secure `/tv/setup` pairing, permission grants, a verified live push, and disconnecting ADB afterward. No changes to the core five-tool MCP unless you explicitly set `TV_OPEN_ENABLED=true`.
+
 ## Let your agent set it up
 
 Fork or clone this repository and give your coding agent this instruction:
