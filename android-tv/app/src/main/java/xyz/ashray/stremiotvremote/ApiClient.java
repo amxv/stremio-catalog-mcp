@@ -13,13 +13,17 @@ final class ApiClient {
     private ApiClient() {}
 
     static JSONObject post(String base, String route, JSONObject body, String bearer) throws Exception {
+        return post(base, route, body, bearer, 7000);
+    }
+
+    static JSONObject post(String base, String route, JSONObject body, String bearer, int timeoutMillis) throws Exception {
         // normalizeServer rejects everything except an HTTPS origin.
         String origin = RemoteConfig.normalizeServer(base);
         HttpURLConnection conn = (HttpURLConnection) new URL(origin + route).openConnection();
         conn.setInstanceFollowRedirects(false);
         conn.setRequestMethod("POST");
-        conn.setConnectTimeout(7000);
-        conn.setReadTimeout(7000);
+        conn.setConnectTimeout(timeoutMillis);
+        conn.setReadTimeout(timeoutMillis);
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "application/json");

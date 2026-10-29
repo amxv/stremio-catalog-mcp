@@ -13,6 +13,7 @@
     { "source": "/tv/pair/start", "destination": "/api/mcp?resource=tv&action=pair-start" },
     { "source": "/tv/pair/status", "destination": "/api/mcp?resource=tv&action=pair-status" },
     { "source": "/tv/device/token", "destination": "/api/mcp?resource=tv&action=device-token" },
+    { "source": "/tv/device/receipt", "destination": "/api/mcp?resource=tv&action=device-receipt" },
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/stremio/:token/manifest.json", "destination": "/api/mcp?token=:token&resource=manifest" },
     { "source": "/stremio/:token/catalog/:type/:id.json", "destination": "/api/mcp?token=:token&resource=catalog&type=:type&id=:id" },

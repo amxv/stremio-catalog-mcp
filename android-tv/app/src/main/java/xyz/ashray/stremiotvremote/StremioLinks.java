@@ -9,15 +9,30 @@ public final class StremioLinks {
     private StremioLinks() {}
 
     public static String detail(String type, String id) {
+        return detail(type, id, null, null);
+    }
+
+    /** Select a series episode without autoplay, or omit both numbers for its overview. */
+    public static String detail(String type, String id, Integer season, Integer episode) {
         if (!"movie".equals(type) && !"series".equals(type)) {
             throw new IllegalArgumentException("Unsupported media type");
         }
         if (id == null || !IMDB.matcher(id).matches()) {
             throw new IllegalArgumentException("Invalid IMDb ID");
         }
+        if ((season == null) != (episode == null) ||
+            (season != null && !"series".equals(type))) {
+            throw new IllegalArgumentException("Only series can select an episode; provide both numbers");
+        }
         // For series, blank videoId opens the show's detail/episode overview.
         // No autoPlay parameter is ever supplied.
         String videoID = "movie".equals(type) ? id : "";
+        if (season != null) {
+            if (season < 0 || season > 100 || episode < 1 || episode > 1000) {
+                throw new IllegalArgumentException("Invalid season or episode number");
+            }
+            videoID = id + ":" + season + ":" + episode;
+        }
         return "stremio:///detail/" + type + "/" + id + "/" + videoID;
     }
 }

@@ -85,21 +85,22 @@ func PublicHandler(service *Service) http.Handler {
 				return
 			}
 			var request struct {
-				Action   string `json:"action"`
-				Code     string `json:"code,omitempty"`
-				DeviceID string `json:"device_id,omitempty"`
+				Action    string `json:"action"`
+				Code      string `json:"code,omitempty"`
+				DeviceID  string `json:"device_id,omitempty"`
+				CommandID string `json:"command_id,omitempty"`
 			}
 			if !decodeRequest(w, r, &request) {
 				return
 			}
 			switch request.Action {
 			case "list":
-				if request.Code != "" || request.DeviceID != "" {
+				if request.Code != "" || request.DeviceID != "" || request.CommandID != "" {
 					writeError(w, http.StatusBadRequest, "unexpected fields")
 					return
 				}
 			case "pair":
-				if request.DeviceID != "" {
+				if request.DeviceID != "" || request.CommandID != "" {
 					writeError(w, http.StatusBadRequest, "unexpected device_id")
 					return
 				}
@@ -110,7 +111,7 @@ func PublicHandler(service *Service) http.Handler {
 				}
 				_ = result
 			case "remove":
-				if request.Code != "" {
+				if request.Code != "" || request.CommandID != "" {
 					writeError(w, http.StatusBadRequest, "unexpected code")
 					return
 				}
@@ -118,8 +119,22 @@ func PublicHandler(service *Service) http.Handler {
 					writeServiceError(w, err)
 					return
 				}
+			case "delivery":
+				if request.Code != "" || request.DeviceID != "" || !commandIDPattern.MatchString(request.CommandID) {
+					writeError(w, http.StatusBadRequest, "valid command_id required")
+					return
+				}
+				receipt, err := service.Store.CommandReceipt(r.Context(), request.CommandID)
+				if err != nil {
+					writeServiceError(w, err)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{
+					"delivery_status": receipt.Status, "updated_at": receipt.UpdatedAt,
+				})
+				return
 			default:
-				writeError(w, http.StatusBadRequest, "action must be list, pair or remove")
+				writeError(w, http.StatusBadRequest, "action must be list, pair, remove or delivery")
 				return
 			}
 			devices, err := service.ListDevices(r.Context())
@@ -185,6 +200,26 @@ func PublicHandler(service *Service) http.Handler {
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"updated": true})
+		case "device-receipt":
+			var req struct {
+				DeviceID  string `json:"device_id"`
+				CommandID string `json:"command_id"`
+				Status    string `json:"status"`
+			}
+			if !decodeRequest(w, r, &req) {
+				return
+			}
+			const prefix = "Bearer "
+			auth := r.Header.Get("Authorization")
+			if !strings.HasPrefix(auth, prefix) {
+				writeError(w, http.StatusUnauthorized, "device authentication required")
+				return
+			}
+			if err := service.AcknowledgeDelivery(r.Context(), req.DeviceID, strings.TrimPrefix(auth, prefix), req.CommandID, req.Status); err != nil {
+				writeServiceError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"recorded": true})
 		default:
 			http.NotFound(w, r)
 		}

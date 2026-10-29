@@ -61,7 +61,7 @@ func (s *FCMSender) Send(ctx context.Context, device Device, payload OpenPayload
 	if !validFCMToken(device.FCMToken) {
 		return "", errors.New("paired TV has an invalid FCM token; re-pair")
 	}
-	if _, err := DetailLink(payload.MediaType, payload.IMDbID); err != nil {
+	if _, err := EpisodeLink(payload.MediaType, payload.IMDbID, payload.Season, payload.Episode); err != nil {
 		return "", err
 	}
 	source := s.TokenSource
@@ -79,16 +79,19 @@ func (s *FCMSender) Send(ctx context.Context, device Device, payload OpenPayload
 	if !token.Valid() {
 		return "", errors.New("FCM OAuth returned invalid access token")
 	}
+	data := map[string]string{
+		"kind": "open_title", "media_type": payload.MediaType,
+		"imdb_id": payload.IMDbID, "command_id": payload.CommandID,
+		"issued_at": strconv.FormatInt(payload.IssuedAt, 10),
+	}
+	if payload.Season != nil && payload.Episode != nil {
+		data["season"] = strconv.Itoa(*payload.Season)
+		data["episode"] = strconv.Itoa(*payload.Episode)
+	}
 	body := map[string]any{
 		"message": map[string]any{
 			"token": device.FCMToken,
-			"data": map[string]string{
-				"kind":       "open_title",
-				"media_type": payload.MediaType,
-				"imdb_id":    payload.IMDbID,
-				"command_id": payload.CommandID,
-				"issued_at":  strconv.FormatInt(payload.IssuedAt, 10),
-			},
+			"data":  data,
 			"android": map[string]any{
 				"priority": "HIGH",
 				"ttl":      "0s", // Never surprise the user with an old title after TV reconnects.

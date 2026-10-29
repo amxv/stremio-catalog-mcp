@@ -19,10 +19,19 @@ import (
 const maxDevices = 1
 
 var (
-	pairCodePattern = regexp.MustCompile(`^[0-9]{8}$`)
-	deviceIDPattern = regexp.MustCompile(`^tv_[0-9a-f]{32}$`)
-	tokenPattern    = regexp.MustCompile(`^[A-Za-z0-9_:.-]+$`)
+	pairCodePattern  = regexp.MustCompile(`^[0-9]{8}$`)
+	deviceIDPattern  = regexp.MustCompile(`^tv_[0-9a-f]{32}$`)
+	commandIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+	tokenPattern     = regexp.MustCompile(`^[A-Za-z0-9_:.-]+$`)
 )
+
+func validDeliveryStatus(status string) bool {
+	switch status {
+	case "launch_requested", "notification_posted", "notification_unavailable":
+		return true
+	}
+	return false
+}
 
 type Sender interface {
 	Send(context.Context, Device, OpenPayload) (string, error)
@@ -33,6 +42,9 @@ type Service struct {
 	Sender   Sender
 	Now      func() time.Time
 	SetupKey string
+	// ReceiptWait overrides the short delivery-receipt wait in tests. Zero uses
+	// the production default; a negative value skips waiting.
+	ReceiptWait time.Duration
 }
 
 func FromEnv(redis *catalog.RedisStore) *Service {
@@ -234,31 +246,54 @@ func (s *Service) RevokeDevice(ctx context.Context, id string) error {
 
 type OpenInput struct {
 	MediaType string `json:"media_type" jsonschema:"movie or series"`
-	IMDbID    string `json:"imdb_id" jsonschema:"Canonical IMDb tt... ID; do not pass a title"`
+	IMDbID    string `json:"imdb_id" jsonschema:"IMDb tt... ID"`
+	Season    *int   `json:"season,omitempty" jsonschema:"Series season, including 0 for specials; requires episode"`
+	Episode   *int   `json:"episode,omitempty" jsonschema:"Series episode number (1+); requires season"`
 }
 type OpenPayload struct {
 	MediaType string
 	IMDbID    string
+	Season    *int
+	Episode   *int
 	CommandID string
 	IssuedAt  int64
 }
 type OpenResult struct {
-	Status     string `json:"status"`
-	DeviceName string `json:"device_name"`
-	IMDbID     string `json:"imdb_id"`
-	MediaType  string `json:"media_type"`
-	Note       string `json:"note"`
+	Status         string `json:"status"`
+	DeliveryStatus string `json:"delivery_status"`
+	CommandID      string `json:"command_id"`
+	DeviceName     string `json:"device_name"`
+	IMDbID         string `json:"imdb_id"`
+	MediaType      string `json:"media_type"`
+	Season         *int   `json:"season,omitempty"`
+	Episode        *int   `json:"episode,omitempty"`
+	Note           string `json:"note"`
 }
 
 // DetailLink is intentionally non-autoplay. The empty series video ID opens
 // the series detail/episode overview rather than selecting an episode.
 func DetailLink(mediaType, imdbID string) (string, error) {
+	return EpisodeLink(mediaType, imdbID, nil, nil)
+}
+
+// EpisodeLink selects an individual series episode without starting playback.
+// Season zero (specials) is valid; episode numbers start at one.
+func EpisodeLink(mediaType, imdbID string, season, episode *int) (string, error) {
 	if !catalog.ValidType(mediaType) || !catalog.ValidIMDbID(imdbID) {
 		return "", errors.New("media_type must be movie or series and imdb_id must be a valid IMDb ID")
+	}
+	if (season == nil) != (episode == nil) || (season != nil && mediaType != "series") {
+		return "", errors.New("season and episode must both be provided, only for a series")
 	}
 	videoID := imdbID
 	if mediaType == "series" {
 		videoID = ""
+		if season != nil {
+			if *season < 0 || *season > 100 || *episode < 1 || *episode > 1000 {
+				return "", errors.New("season must be 0–100 and episode 1–1000")
+			}
+			videoID = fmt.Sprintf("%s:%d:%d", imdbID, *season, *episode)
+		}
 	}
 	return fmt.Sprintf("stremio:///detail/%s/%s/%s", mediaType, imdbID, videoID), nil
 }
@@ -267,7 +302,7 @@ func (s *Service) OpenTitle(ctx context.Context, input OpenInput) (OpenResult, e
 	if err := s.ready(); err != nil {
 		return OpenResult{}, err
 	}
-	if _, err := DetailLink(input.MediaType, input.IMDbID); err != nil {
+	if _, err := EpisodeLink(input.MediaType, input.IMDbID, input.Season, input.Episode); err != nil {
 		return OpenResult{}, err
 	}
 	list, err := s.Store.List(ctx)
@@ -285,33 +320,103 @@ func (s *Service) OpenTitle(ctx context.Context, input OpenInput) (OpenResult, e
 	if err != nil {
 		return OpenResult{}, err
 	}
-	_, err = s.Sender.Send(ctx, *selected, OpenPayload{MediaType: input.MediaType, IMDbID: input.IMDbID, CommandID: commandID, IssuedAt: s.now().Unix()})
-	if err != nil {
+	if err := s.Store.ReserveCommand(ctx, commandID, selected.ID); err != nil {
 		return OpenResult{}, err
 	}
-	return OpenResult{
-		Status: "accepted_by_fcm", DeviceName: selected.Name,
-		IMDbID: input.IMDbID, MediaType: input.MediaType,
-		Note: "FCM accepted the message, but this does not confirm TV delivery or that Stremio opened.",
-	}, nil
+	_, err = s.Sender.Send(ctx, *selected, OpenPayload{
+		MediaType: input.MediaType, IMDbID: input.IMDbID,
+		Season: input.Season, Episode: input.Episode,
+		CommandID: commandID, IssuedAt: s.now().Unix(),
+	})
+	if err != nil {
+		_ = s.Store.CancelCommand(ctx, commandID)
+		return OpenResult{}, err
+	}
+	result := OpenResult{
+		Status: "accepted_by_fcm", DeliveryStatus: "not_confirmed",
+		CommandID: commandID, DeviceName: selected.Name,
+		IMDbID: input.IMDbID, MediaType: input.MediaType, Season: input.Season, Episode: input.Episode,
+		Note: "Message accepted; TV delivery not confirmed. The TV may be offline.",
+	}
+	if receipt, err := s.waitForReceipt(ctx, commandID); err == nil && receipt.Status != "pending" {
+		result.DeliveryStatus = receipt.Status
+		switch receipt.Status {
+		case "launch_requested":
+			result.Note = "TV received the command and requested Stremio to open. On-screen navigation is not confirmed."
+		case "notification_posted":
+			result.Note = "TV received the command but posted an Open in Stremio notification instead."
+		case "notification_unavailable":
+			result.Note = "TV received the command but could not launch Stremio or post a notification."
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) waitForReceipt(ctx context.Context, commandID string) (CommandReceipt, error) {
+	window := s.ReceiptWait
+	if window < 0 {
+		return CommandReceipt{Status: "pending"}, nil
+	}
+	if window == 0 {
+		window = 3500 * time.Millisecond
+	}
+	ctx, cancel := context.WithTimeout(ctx, window)
+	defer cancel()
+	tick := time.NewTicker(250 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		receipt, err := s.Store.CommandReceipt(ctx, commandID)
+		if err != nil || receipt.Status != "pending" {
+			return receipt, err
+		}
+		select {
+		case <-ctx.Done():
+			return CommandReceipt{Status: "pending"}, ctx.Err()
+		case <-tick.C:
+		}
+	}
+}
+
+// AcknowledgeDelivery accepts only a paired TV's own short-lived command.
+// A receipt confirms the receiver attempted a launch, not that Stremio rendered.
+func (s *Service) AcknowledgeDelivery(ctx context.Context, deviceID, key, commandID, status string) error {
+	if !commandIDPattern.MatchString(commandID) || !validDeliveryStatus(status) {
+		return ErrInvalidInput
+	}
+	if _, err := s.authenticateDevice(ctx, deviceID, key); err != nil {
+		return err
+	}
+	ok, err := s.Store.AcknowledgeCommand(ctx, commandID, deviceID, status, s.now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Service) authenticateDevice(ctx context.Context, id, key string) (Device, error) {
+	if s == nil || s.Store == nil || !deviceIDPattern.MatchString(id) || len(key) != 43 || !isURLBase64(key) {
+		return Device{}, ErrUnauthorized
+	}
+	device, err := s.Store.Get(ctx, id)
+	if err != nil || subtle.ConstantTimeCompare([]byte(device.SecretHash), []byte(hashSecret(key))) != 1 {
+		return Device{}, ErrUnauthorized
+	}
+	return device, nil
 }
 
 func (s *Service) UpdateDeviceToken(ctx context.Context, id, key, token string) error {
 	if s == nil || s.Store == nil {
 		return errors.New("TV feature disabled")
 	}
-	if !deviceIDPattern.MatchString(id) || len(key) != 43 || !isURLBase64(key) {
-		return ErrUnauthorized
-	}
 	if !validFCMToken(token) {
 		return ErrInvalidInput
 	}
-	device, err := s.Store.Get(ctx, id)
+	device, err := s.authenticateDevice(ctx, id, key)
 	if err != nil {
-		return ErrUnauthorized
-	}
-	if subtle.ConstantTimeCompare([]byte(device.SecretHash), []byte(hashSecret(key))) != 1 {
-		return ErrUnauthorized
+		return err
 	}
 	next := device
 	next.FCMToken = token

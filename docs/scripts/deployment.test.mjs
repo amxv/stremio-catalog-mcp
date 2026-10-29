@@ -41,6 +41,8 @@ test('TV docs are opt-in and guide an agent through Vercel, ADB and real-device 
     'adb pair', 'adb connect', 'adb devices -l', 'install -r',
     'uiautomator dump', 'SYSTEM_ALERT_WINDOW allow', 'adb disconnect',
     'accepted_by_fcm', 'Break' + 'ing Bad', 'Inception',
+    'delivery_status', 'launch_requested', 'notification_posted',
+    'not_confirmed', 'season', 'episode', 'command_id',
   ]) {
     assert.ok(guide.includes(phrase), `optional TV agent guide missing ${phrase}`);
   }
@@ -51,4 +53,5 @@ test('TV docs are opt-in and guide an agent through Vercel, ADB and real-device 
   const api = JSON.parse(readFileSync(path.join(repo, 'vercel.json'), 'utf8'));
   assert.ok(api.rewrites.some(route => route.source === '/tv/setup'));
   assert.ok(api.rewrites.some(route => route.source === '/tv/admin'));
+  assert.ok(api.rewrites.some(route => route.source === '/tv/device/receipt'));
 });

@@ -325,7 +325,7 @@ After testing, return to Stremio and disconnect ADB using `adb disconnect TV_IP:
 
 ## 4. Use ChatGPT
 
-With `TV_OPEN_ENABLED=true`, there is **exactly one additional MCP tool**, `tv_open_title`. It accepts `media_type` (`movie` or `series`) and an IMDb ID (`imdb_id`, `tt...`). There is no device selection, pairing, or device-management surface in MCP. With the TV feature disabled, the original five tools remain unchanged.
+With `TV_OPEN_ENABLED=true`, there is **exactly one additional MCP tool**, `tv_open_title`. It accepts `media_type` (`movie` or `series`) and an IMDb ID (`imdb_id`, `tt...`), plus optional `season` and `episode` for a specific series episode. There is no device selection, pairing, or device-management surface in MCP. With the TV feature disabled, the original five tools remain unchanged.
 
 Have the user refresh or reconnect their **existing** custom MCP connection in ChatGPT if its tool list still shows only the five default tools after the new deployment. Don't create a second connector just to discover the added tool, and don't expose device pairing as a model tool.
 
@@ -337,7 +337,30 @@ For example, the MCP input:
 
 asks the TV to open `stremio:///detail/movie/tt1375666/tt1375666`. For a series, the episode/video ID is left empty to open the show's main detail page; no autoplay flag is set. Cinemeta and installed Stremio add-ons remain responsible for descriptions, IMDb ratings, trailers, episodes, and playback sources.
 
-**Important:** The server returns `accepted_by_fcm` only after Google accepts the push. This is **not proof the TV received it or that Stremio opened successfully**. The TV must be on and connected, and zero-TTL commands intentionally won't be queued for offline delivery. A single paired TV is selected automatically.
+To **open an exact series episode** without playing it, provide both numbers:
+
+```json
+{"media_type":"series","imdb_id":"tt0903747","season":3,"episode":4}
+```
+
+This sends `stremio:///detail/series/tt0903747/tt0903747:3:4`, using Stremio's documented `videoId` format. Omit **both** fields for the series overview. `season: 0` supports specials; episodes start at `1`. Supplying only one field, or selecting an episode of a movie, is rejected. **There is never an `autoPlay` parameter.** The model should verify the IMDb ID and episode numbering first (for example, using the existing watch-history tool or trusted series metadata).
+
+### Delivery receipts: what the MCP actually knows
+
+The backend creates a short-lived command record before sending. The TV uses its **existing per-device credential** to acknowledge receiving that exact command. The `tv_open_title` response waits briefly for an acknowledgement and returns `status`, `delivery_status`, and a `command_id`:
+
+| `delivery_status` | What it proves |
+| --- | --- |
+| `launch_requested` | The TV received the command and called Android to open Stremio. **It does not prove the Stremio screen rendered.** |
+| `notification_posted` | The TV received the command but used an **Open in Stremio** notification because direct launch was unavailable. |
+| `notification_unavailable` | The TV received the command but could neither launch Stremio nor post a notification. |
+| `not_confirmed` | Google accepted the push, but no TV receipt arrived during the short wait. This is **not proof of failure** or of delivery. |
+
+The top-level `status: accepted_by_fcm` means Google accepted the push; consult `delivery_status` for the stronger TV-side signal. An actual screen change can only be verified by looking at the TV or reading its UI hierarchy with ADB. This integration does **not** falsely claim on-screen confirmation.
+
+For delayed acknowledgments, the `command_id` is valid for a few minutes. The owner can check it with the same **private** `/tv/admin` endpoint and separate `TV_SETUP_KEY` used for pairing (`{"action":"delivery","command_id":"..."}`). This is an owner-only diagnostic, **not another MCP tool**, and it doesn't expose device or FCM credentials. Receipts expire after five minutes; there's no extra database or background polling service.
+
+**Important:** The TV must be on and connected for immediate delivery, and zero-TTL commands intentionally won't be queued for offline delivery. One paired TV is selected automatically.
 
 ### Prove it works on the actual TV (agent acceptance test)
 
@@ -355,7 +378,9 @@ adb -s "$ADB_SERIAL" shell cat /sdcard/stremio-detail.xml
 
 Expect `com.stremio.one` in the resumed activity and **Inception (2010)** in the UI hierarchy. You can try a series with `stremio:///detail/series/tt0903747/` (**Breaking Bad**). The series main page does not select an episode or play a stream.
 
-**Next, test the complete MCP → FCM → TV path.** While Stremio is showing a *different* title, invoke the authenticated MCP `tv_open_title` with `media_type: "series", imdb_id: "tt0903747"`. **Do not run another `adb shell am start` for this test.** Observe whether Stremio itself changes to **Breaking Bad (2008–2013)**. Verify the visible TV screen or its accessibility hierarchy. If Google reports `accepted_by_fcm` but the screen stays unchanged, the end-to-end test **failed**; investigate permission, push delivery, Stremio URI handling, and the TV logs.
+**Next, test the complete MCP → FCM → TV path.** While Stremio is showing a *different* title, invoke the authenticated MCP `tv_open_title` with `media_type: "series", imdb_id: "tt0903747"`. **Do not run another `adb shell am start` for this test.** Observe whether Stremio itself changes to **Breaking Bad (2008–2013)**. Verify the visible TV screen or its accessibility hierarchy. Compare the response's `delivery_status` with what happened. If Google reports `accepted_by_fcm` but the screen stays unchanged, investigate permission, push delivery, Stremio URI handling, and the TV logs rather than assuming success.
+
+Repeat with `season: 3, episode: 4` to verify that the correct episode is selected **without starting playback**. If you aren't sure which episode is expected, inspect the series metadata first.
 
 **Finally, verify ADB is unnecessary:** `adb disconnect "$ADB_SERIAL"`, invoke `tv_open_title` for another title via MCP, and check the TV screen directly (or reconnect ADB only *afterward* to read the UI hierarchy). The agent should report these as **separate observations**: API accepted, TV received/opened, and no-ADB navigation. Once finished, disconnect ADB again. There is no perpetual Mac background service required.
 
@@ -376,7 +401,8 @@ To revoke a companion, use the private `/tv/setup` page, then reset local pairin
 - **No MCP key on TV:** A separate `TV_SETUP_KEY` authenticates browser-based pairing and revocation. The public pairing endpoints cannot approve devices, read paired-device lists, or invoke Stremio. Only the authenticated MCP can send an open-title command. Device records and FCM tokens remain private in Redis. The `/tv/admin` endpoint requires a bearer key (not a query-string token) and disallows cross-origin requests.
 - **Single-TV enforcement:** Redis atomically refuses approval of a second paired device, even if two codes are approved concurrently.
 - **Short-lived pairing:** Codes are eight digits, single-use, ten-minute expiry. The TV receives a separate 256-bit session credential to poll approval, then a distinct per-device secret for token refresh. Pair creation is per-address and globally rate-limited.
-- **Narrow actions:** Push payloads contain only canonical IMDb IDs, `movie`/`series`, a command ID, and an issue time. No arbitrary URLs, autoplay, shell commands, streams, or app-control RPCs. The receiver rejects invalid/stale commands.
+- **Narrow actions:** Push payloads contain only canonical IMDb IDs, `movie`/`series`, optional season/episode numbers, a command ID, and an issue time. No arbitrary URLs, autoplay, shell commands, streams, or app-control RPCs. The receiver rejects invalid/stale commands.
+- **Authenticated receipts:** The companion can acknowledge only a recently reserved command belonging to the paired TV, using its private device secret. Receipts are short-lived, contain no registration token or private key, and distinguish a requested launch from confirmed display.
 - **FCM errors:** `401/403` from Google's HTTP v1 API usually indicates a wrong service account, project or IAM role. An unregistered device token means the APK should be reopened/re-paired. Ensure Cloud Messaging API is enabled.
 - **No push delivery:** Ensure Google Play Services is installed/enabled and the APK is built with the Firebase config for the *same project* configured in Vercel. Battery/firmware restrictions can delay data pushes.
 - **No automatic navigation:** Grant Display over other apps, confirm Stremio is installed, and verify its deep link with ADB. Android firmware may still require manually opening the notification or last request.

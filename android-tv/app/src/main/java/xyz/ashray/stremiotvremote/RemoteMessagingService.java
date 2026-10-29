@@ -52,7 +52,9 @@ public final class RemoteMessagingService extends FirebaseMessagingService {
             long issued = Long.parseLong(data.get("issued_at"));
             long now = System.currentTimeMillis() / 1000;
             if (Math.abs(now - issued) > 120) return;
-            link = StremioLinks.detail(data.get("media_type"), data.get("imdb_id"));
+            Integer season = data.containsKey("season") ? Integer.parseInt(data.get("season")) : null;
+            Integer episode = data.containsKey("episode") ? Integer.parseInt(data.get("episode")) : null;
+            link = StremioLinks.detail(data.get("media_type"), data.get("imdb_id"), season, episode);
         } catch (RuntimeException invalid) {
             return;
         }
@@ -62,8 +64,10 @@ public final class RemoteMessagingService extends FirebaseMessagingService {
         config.lastRequest(command, link);
         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(link));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        String outcome;
         if (intent.resolveActivity(getPackageManager()) == null) {
-            showNotification(intent);
+            outcome = showNotification(intent) ? "notification_posted" : "notification_unavailable";
+            acknowledge(config, command, outcome);
             return;
         }
 
@@ -75,31 +79,51 @@ public final class RemoteMessagingService extends FirebaseMessagingService {
         if (mayLaunch) {
             try {
                 startActivity(intent);
+                acknowledge(config, command, "launch_requested");
                 return;
             } catch (RuntimeException ignored) {
                 // Never claim successful navigation; show a manual action.
             }
         }
-        showNotification(intent);
+        outcome = showNotification(intent) ? "notification_posted" : "notification_unavailable";
+        acknowledge(config, command, outcome);
     }
 
-    private void showNotification(Intent viewIntent) {
+    /** Best effort: report receipt through the paired device's private credential.
+     * Runs briefly on Firebase's background callback thread; no polling loop. */
+    private void acknowledge(RemoteConfig config, String command, String status) {
+        try {
+            ApiClient.post(config.server(), "/tv/device/receipt",
+                    new JSONObject().put("device_id", config.deviceID())
+                            .put("command_id", command).put("status", status),
+                    config.deviceSecret(), 2000);
+        } catch (Exception ignored) {
+            // Acknowledgment is best-effort and never blocks opening Stremio.
+        }
+    }
+
+    private boolean showNotification(Intent viewIntent) {
         NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager == null) return;
+        if (manager == null) return false;
         if (Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                        != PackageManager.PERMISSION_GRANTED) return;
-        manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL, "Open titles in Stremio", NotificationManager.IMPORTANCE_DEFAULT));
-        PendingIntent tap = PendingIntent.getActivity(this, 1, viewIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification notification = new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_remote)
-                .setContentTitle("Open title in Stremio")
-                .setContentText("Select to open the requested title on this TV")
-                .setContentIntent(tap)
-                .setAutoCancel(true)
-                .build();
-        manager.notify(1001, notification);
+                        != PackageManager.PERMISSION_GRANTED) return false;
+        try {
+            manager.createNotificationChannel(new NotificationChannel(
+                    CHANNEL, "Open titles in Stremio", NotificationManager.IMPORTANCE_DEFAULT));
+            PendingIntent tap = PendingIntent.getActivity(this, 1, viewIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification notification = new Notification.Builder(this, CHANNEL)
+                    .setSmallIcon(R.drawable.ic_remote)
+                    .setContentTitle("Open title in Stremio")
+                    .setContentText("Select to open the requested title on this TV")
+                    .setContentIntent(tap)
+                    .setAutoCancel(true)
+                    .build();
+            manager.notify(1001, notification);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 }

@@ -20,13 +20,14 @@ type memoryStore struct {
 	sync.Mutex
 	pending      map[string]PairPending
 	receipts     map[string]PairReceipt
+	commands     map[string]CommandReceipt
 	devices      map[string]Device
 	pairAttempts int
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		pending: map[string]PairPending{}, receipts: map[string]PairReceipt{}, devices: map[string]Device{},
+		pending: map[string]PairPending{}, receipts: map[string]PairReceipt{}, devices: map[string]Device{}, commands: map[string]CommandReceipt{},
 	}
 }
 func (m *memoryStore) RateLimitPair(_ context.Context, _ string) (bool, error) {
@@ -113,17 +114,60 @@ func (m *memoryStore) Remove(_ context.Context, id string) error {
 	return nil
 }
 
+func (m *memoryStore) ReserveCommand(_ context.Context, id, deviceID string) error {
+	m.Lock()
+	defer m.Unlock()
+	if _, exists := m.commands[id]; exists {
+		return errors.New("duplicate command")
+	}
+	m.commands[id] = CommandReceipt{DeviceID: deviceID, Status: "pending"}
+	return nil
+}
+
+func (m *memoryStore) CommandReceipt(_ context.Context, id string) (CommandReceipt, error) {
+	m.Lock()
+	defer m.Unlock()
+	result, ok := m.commands[id]
+	if !ok {
+		return CommandReceipt{}, ErrNotFound
+	}
+	return result, nil
+}
+
+func (m *memoryStore) AcknowledgeCommand(_ context.Context, id, deviceID, status, when string) (bool, error) {
+	m.Lock()
+	defer m.Unlock()
+	r, ok := m.commands[id]
+	if !ok || r.DeviceID != deviceID || r.Status != "pending" {
+		return false, nil
+	}
+	r.Status, r.UpdatedAt = status, when
+	m.commands[id] = r
+	return true, nil
+}
+
+func (m *memoryStore) CancelCommand(_ context.Context, id string) error {
+	m.Lock()
+	defer m.Unlock()
+	delete(m.commands, id)
+	return nil
+}
+
 type fakeSender struct {
 	device  Device
 	payload OpenPayload
 	count   int
 	err     error
+	onSend  func(Device, OpenPayload)
 }
 
 func (f *fakeSender) Send(_ context.Context, d Device, p OpenPayload) (string, error) {
 	f.device = d
 	f.payload = p
 	f.count++
+	if f.onSend != nil {
+		f.onSend(d, p)
+	}
 	return "projects/test/messages/1", f.err
 }
 
@@ -142,7 +186,7 @@ func postJSON(t *testing.T, handler http.Handler, route, body, auth string) *htt
 func TestTVPublicPairOpenAndRevoke(t *testing.T) {
 	store := newMemoryStore()
 	sender := &fakeSender{}
-	s := &Service{Store: store, Sender: sender, SetupKey: "test-only-private-administration-secret-123456", Now: func() time.Time { return time.Unix(1700000000, 0) }}
+	s := &Service{Store: store, Sender: sender, ReceiptWait: -1, SetupKey: "test-only-private-administration-secret-123456", Now: func() time.Time { return time.Unix(1700000000, 0) }}
 	handler := PublicHandler(s)
 	const firstToken = "valid_token_abcdefghijklmnopqrstuvwxyz_1"
 	start := postJSON(t, handler, "/api/mcp?resource=tv&action=pair-start",
@@ -276,6 +320,129 @@ func TestTVSafetyAndValidation(t *testing.T) {
 	}
 	if subtle.ConstantTimeCompare([]byte(hashSecret("x")), []byte(hashSecret("y"))) == 1 {
 		t.Fatal("hash collision")
+	}
+}
+
+func testInt(n int) *int { return &n }
+
+func TestSeriesEpisodeLinks(t *testing.T) {
+	for _, test := range []struct {
+		typ, id         string
+		season, episode *int
+		want            string
+	}{
+		{"movie", "tt1375666", nil, nil, "stremio:///detail/movie/tt1375666/tt1375666"},
+		{"series", "tt0903747", nil, nil, "stremio:///detail/series/tt0903747/"},
+		{"series", "tt0903747", testInt(3), testInt(4), "stremio:///detail/series/tt0903747/tt0903747:3:4"},
+		{"series", "tt0903747", testInt(0), testInt(1), "stremio:///detail/series/tt0903747/tt0903747:0:1"},
+	} {
+		got, err := EpisodeLink(test.typ, test.id, test.season, test.episode)
+		if err != nil || got != test.want {
+			t.Errorf("EpisodeLink got %q, %v; want %q", got, err, test.want)
+		}
+		if strings.Contains(got, "autoPlay") {
+			t.Fatal("episode link must never autoplay")
+		}
+	}
+	for _, test := range []struct {
+		typ             string
+		season, episode *int
+	}{
+		{"series", testInt(1), nil}, {"series", nil, testInt(1)},
+		{"movie", testInt(1), testInt(1)}, {"series", testInt(-1), testInt(1)},
+		{"series", testInt(1), testInt(0)}, {"series", testInt(101), testInt(1)},
+		{"series", testInt(1), testInt(1001)},
+	} {
+		if _, err := EpisodeLink(test.typ, "tt0903747", test.season, test.episode); err == nil {
+			t.Errorf("accepted invalid episode %+v", test)
+		}
+	}
+}
+
+func TestDeliveryReceiptsAreAuthenticatedAndHonest(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	key, err := secret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "tv_0123456789abcdef0123456789abcdef"
+	store.devices[id] = Device{ID: id, Name: "TV", FCMToken: "valid_token_abcdefghijklmnopqrstuvwxyz", SecretHash: hashSecret(key)}
+	sender := &fakeSender{}
+	s := &Service{Store: store, Sender: sender, ReceiptWait: 20 * time.Millisecond, SetupKey: "owner-super-secret-1234567890123456789"}
+	handler := PublicHandler(s)
+	sender.onSend = func(_ Device, p OpenPayload) {
+		if p.Season == nil || *p.Season != 3 || p.Episode == nil || *p.Episode != 4 {
+			t.Errorf("missing episode selection: %+v", p)
+		}
+		url := "/api/mcp?resource=tv&action=device-receipt"
+		body := fmt.Sprintf(`{"device_id":%q,"command_id":%q,"status":"launch_requested"}`, id, p.CommandID)
+		for _, test := range []struct {
+			label, body, auth string
+			code              int
+		}{
+			{"missing authentication", body, "", 401},
+			{"wrong credential", body, "wrong", 401},
+			{"wrong TV", strings.Replace(body, id, "tv_ffffffffffffffffffffffffffffffff", 1), key, 401},
+			{"unknown command", strings.Replace(body, p.CommandID, "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 1), key, 404},
+			{"unsupported status", strings.Replace(body, "launch_requested", "opened", 1), key, 400},
+			{"valid receipt", body, key, 200},
+			{"duplicate receipt", body, key, 404},
+		} {
+			resp := postJSON(t, handler, url, test.body, test.auth)
+			if resp.Code != test.code {
+				t.Errorf("%s status %d, want %d: %s", test.label, resp.Code, test.code, resp.Body.String())
+			}
+		}
+	}
+	result, err := s.OpenTitle(ctx, OpenInput{MediaType: "series", IMDbID: "tt0903747", Season: testInt(3), Episode: testInt(4)})
+	if err != nil || result.Status != "accepted_by_fcm" || result.DeliveryStatus != "launch_requested" {
+		t.Fatalf("receipt missing from MCP result: %+v err=%v", result, err)
+	}
+	if len(result.CommandID) != 43 || !strings.Contains(result.Note, "not confirmed") || result.Season == nil || *result.Season != 3 {
+		t.Fatalf("result should identify selected episode without overclaiming: %+v", result)
+	}
+	if strings.Contains(mustJSON(t, result), key) || strings.Contains(mustJSON(t, result), store.devices[id].FCMToken) {
+		t.Fatal("MCP result disclosed credentials")
+	}
+	admin := postJSON(t, handler, "/api/mcp?resource=tv&action=admin", fmt.Sprintf(`{"action":"delivery","command_id":%q}`, result.CommandID), s.SetupKey)
+	if admin.Code != 200 || !strings.Contains(admin.Body.String(), "launch_requested") {
+		t.Fatalf("admin delivery receipt unavailable: %d %s", admin.Code, admin.Body.String())
+	}
+	if strings.Contains(admin.Body.String(), key) || strings.Contains(admin.Body.String(), id) {
+		t.Fatal("admin receipt leaked device ID or secret")
+	}
+	// An unauthenticated client cannot inspect delivery status either.
+	if noAuth := postJSON(t, handler, "/api/mcp?resource=tv&action=admin", fmt.Sprintf(`{"action":"delivery","command_id":%q}`, result.CommandID), ""); noAuth.Code != 401 {
+		t.Fatal("delivery status public")
+	}
+}
+
+func TestDeliveryTimeoutAndSendFailure(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	id := "tv_0123456789abcdef0123456789abcdef"
+	store.devices[id] = Device{ID: id, Name: "TV", FCMToken: "valid_token_abcdefghijklmnopqrstuvwxyz"}
+	sender := &fakeSender{}
+	s := &Service{Store: store, Sender: sender, ReceiptWait: 5 * time.Millisecond}
+	result, err := s.OpenTitle(ctx, OpenInput{MediaType: "movie", IMDbID: "tt1375666"})
+	if err != nil || result.Status != "accepted_by_fcm" || result.DeliveryStatus != "not_confirmed" {
+		t.Fatalf("unconfirmed delivery must not be claimed: %+v %v", result, err)
+	}
+	receipt, err := store.CommandReceipt(ctx, result.CommandID)
+	if err != nil || receipt.Status != "pending" {
+		t.Fatalf("missing pending command: %+v %v", receipt, err)
+	}
+	sender.err = errors.New("provider failure")
+	_, err = s.OpenTitle(ctx, OpenInput{MediaType: "movie", IMDbID: "tt1375666"})
+	if err == nil {
+		t.Fatal("provider failure not returned")
+	}
+	store.Lock()
+	count := len(store.commands)
+	store.Unlock()
+	if count != 1 {
+		t.Fatalf("failed FCM push left stale command records: %d", count)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 )
 
 const pairTTL = 10 * time.Minute
+const commandTTL = 5 * time.Minute
 
 // PairPending is only stored in short-lived private Redis keys.
 type PairPending struct {
@@ -35,6 +36,15 @@ type Device struct {
 	PairedAt   string `json:"paired_at"`
 }
 
+// CommandReceipt is short-lived and contains no FCM token or credentials.
+// Pending records are reserved before sending the push so late/spoofed
+// acknowledgements cannot create an arbitrary command.
+type CommandReceipt struct {
+	DeviceID  string `json:"device_id"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 // Storage is intentionally independent of catalog state and revisions.
 type Storage interface {
 	RateLimitPair(context.Context, string) (bool, error)
@@ -46,6 +56,10 @@ type Storage interface {
 	Get(context.Context, string) (Device, error)
 	UpdateToken(context.Context, Device, Device) (bool, error)
 	Remove(context.Context, string) error
+	ReserveCommand(context.Context, string, string) error
+	CommandReceipt(context.Context, string) (CommandReceipt, error)
+	AcknowledgeCommand(context.Context, string, string, string, string) (bool, error)
+	CancelCommand(context.Context, string) error
 }
 
 type RedisStore struct {
@@ -210,6 +224,47 @@ func (s RedisStore) Remove(ctx context.Context, id string) error {
 redis.call('DEL', KEYS[2])
 return 1`
 	_, err := s.call(ctx, "EVAL", script, 2, s.key("devices"), s.key("device:"+id), id)
+	return err
+}
+
+func (s RedisStore) ReserveCommand(ctx context.Context, commandID, deviceID string) error {
+	value, err := json.Marshal(CommandReceipt{DeviceID: deviceID, Status: "pending"})
+	if err != nil {
+		return err
+	}
+	result, err := s.call(ctx, "SET", s.key("command:"+commandID), string(value), "EX", int(commandTTL.Seconds()), "NX")
+	if err != nil {
+		return err
+	}
+	var reply string
+	if err := json.Unmarshal(result, &reply); err != nil || reply != "OK" {
+		return errors.New("unable to register TV command")
+	}
+	return nil
+}
+
+func (s RedisStore) CommandReceipt(ctx context.Context, commandID string) (CommandReceipt, error) {
+	var r CommandReceipt
+	err := s.load(ctx, s.key("command:"+commandID), &r)
+	return r, err
+}
+
+func (s RedisStore) AcknowledgeCommand(ctx context.Context, commandID, deviceID, status, when string) (bool, error) {
+	// The command must already exist, belong to this TV, and be pending.
+	// Keep its original expiration; no arbitrary client can grow the data set.
+	const script = `local raw=redis.call('GET',KEYS[1])
+if not raw then return 0 end
+local record=cjson.decode(raw)
+if record.device_id ~= ARGV[1] or record.status ~= 'pending' then return 0 end
+record.status=ARGV[2]
+record.updated_at=ARGV[3]
+redis.call('SET',KEYS[1],cjson.encode(record),'KEEPTTL')
+return 1`
+	return numberResult(s.call(ctx, "EVAL", script, 1, s.key("command:"+commandID), deviceID, status, when))
+}
+
+func (s RedisStore) CancelCommand(ctx context.Context, commandID string) error {
+	_, err := s.call(ctx, "DEL", s.key("command:"+commandID))
 	return err
 }
 

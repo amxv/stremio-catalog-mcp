@@ -148,9 +148,19 @@ func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 					if tool.Name != "tv_open_title" {
 						t.Errorf("unexpected TV MCP tool %s", tool.Name)
 					}
-					for _, key := range []string{"media_type", "imdb_id"} {
+					for _, key := range []string{"media_type", "imdb_id", "season", "episode"} {
 						if len(tool.InputSchema.Properties[key]) == 0 {
 							t.Errorf("%s missing %s", tool.Name, key)
+						}
+					}
+					for _, key := range []string{"season", "episode"} {
+						var field struct {
+							Type []string `json:"type"`
+						}
+						if err := json.Unmarshal(tool.InputSchema.Properties[key], &field); err != nil {
+							t.Error(err)
+						} else if len(field.Type) != 2 || !strings.Contains(strings.Join(field.Type, ","), "integer") || !strings.Contains(strings.Join(field.Type, ","), "null") {
+							t.Errorf("%s must be an optional integer: %v", key, field.Type)
 						}
 					}
 					for _, key := range []string{"device_id", "code", "action", "name", "setup_key"} {
@@ -158,6 +168,9 @@ func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 							t.Errorf("%s must not expose administrative field %s", tool.Name, key)
 						}
 					}
+				}
+				if strings.Contains(string(tool.InputSchema.Properties["imdb_id"]), "firebase") {
+					t.Error("tool schema must describe the agent's inputs, not Firebase implementation")
 				}
 			}
 			if len(actual) != len(tc.expected) {

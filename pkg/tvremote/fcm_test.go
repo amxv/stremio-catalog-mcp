@@ -13,9 +13,9 @@ import (
 )
 
 func TestFCMEmitsOnlyShortLivedTitleData(t *testing.T) {
-	received := false
+	received := 0
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received = true
+		received++
 		if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer test-access-token" {
 			t.Errorf("wrong FCM auth or method")
 		}
@@ -50,6 +50,15 @@ func TestFCMEmitsOnlyShortLivedTitleData(t *testing.T) {
 				t.Errorf("%s = %q want %q", key, body.Message.Data[key], want)
 			}
 		}
+		if received == 1 {
+			if body.Message.Data["season"] != "3" || body.Message.Data["episode"] != "4" {
+				t.Errorf("episode selection missing from FCM data: %v", body.Message.Data)
+			}
+		} else if _, hasSeason := body.Message.Data["season"]; hasSeason {
+			t.Error("series overview must not select a season")
+		} else if _, hasEpisode := body.Message.Data["episode"]; hasEpisode {
+			t.Error("series overview must not select an episode")
+		}
 		if strings.Contains(string(mustJSON(t, body)), "autoPlay") {
 			t.Error("must not autoplay")
 		}
@@ -64,10 +73,16 @@ func TestFCMEmitsOnlyShortLivedTitleData(t *testing.T) {
 		Endpoint:           endpoint.URL, Client: endpoint.Client(),
 	}
 	name, err := sender.Send(context.Background(), Device{FCMToken: "valid_token_abcdefghijklmnopqrstuvwxyz"}, OpenPayload{
+		MediaType: "series", IMDbID: "tt0903747", Season: testInt(3), Episode: testInt(4), CommandID: "sample-command", IssuedAt: 1700000000,
+	})
+	if err != nil || name != "projects/test-project/messages/123" || received != 1 {
+		t.Fatalf("FCM failure %v message=%s received=%v", err, name, received)
+	}
+	_, err = sender.Send(context.Background(), Device{FCMToken: "valid_token_abcdefghijklmnopqrstuvwxyz"}, OpenPayload{
 		MediaType: "series", IMDbID: "tt0903747", CommandID: "sample-command", IssuedAt: 1700000000,
 	})
-	if err != nil || name != "projects/test-project/messages/123" || !received {
-		t.Fatalf("FCM failure %v message=%s received=%v", err, name, received)
+	if err != nil || received != 2 {
+		t.Fatalf("series overview FCM message failed: %v received=%d", err, received)
 	}
 }
 
