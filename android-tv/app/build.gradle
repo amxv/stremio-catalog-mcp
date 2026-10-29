@@ -1,0 +1,63 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'com.android.application'
+}
+
+// google-services.json contains Firebase *public app identifiers*, not a
+// service-account key. It is optional for compiling, but required to pair.
+def firebaseConfigFile = file('google-services.json')
+def cfg = [:]
+if (firebaseConfigFile.exists()) {
+    def info = new JsonSlurper().parse(firebaseConfigFile)
+    def client = info.client.find {
+        it.client_info?.android_client_info?.package_name == 'xyz.ashray.stremiotvremote'
+    }
+    if (client == null) {
+        throw new GradleException('google-services.json must register xyz.ashray.stremiotvremote')
+    }
+    cfg = [
+        project: info.project_info?.project_id ?: '',
+        sender: info.project_info?.project_number ?: '',
+        app: client.client_info?.mobilesdk_app_id ?: '',
+        apiKey: client.api_key?.first()?.current_key ?: ''
+    ]
+}
+
+android {
+    namespace 'xyz.ashray.stremiotvremote'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'xyz.ashray.stremiotvremote'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+        buildConfigField 'String', 'FIREBASE_PROJECT_ID', JsonOutput.toJson(cfg.project ?: '')
+        buildConfigField 'String', 'FIREBASE_SENDER_ID', JsonOutput.toJson(cfg.sender ?: '')
+        buildConfigField 'String', 'FIREBASE_APP_ID', JsonOutput.toJson(cfg.app ?: '')
+        buildConfigField 'String', 'FIREBASE_API_KEY', JsonOutput.toJson(cfg.apiKey ?: '')
+        buildConfigField 'String', 'DEFAULT_SERVER_URL', JsonOutput.toJson((project.findProperty('tvServerUrl') ?: '').toString())
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:35.1.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    testImplementation 'junit:junit:4.13.2'
+}

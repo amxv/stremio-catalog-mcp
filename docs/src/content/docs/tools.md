@@ -6,13 +6,15 @@ category: Guides
 summary: Catalogs, Home layout, and IMDb-only watch-history reads, batch checks, and updates.
 ---
 
-The MCP exposes **five tools**. Your assistant can understand them directly from their names and descriptions:
+The MCP exposes **five tools by default**. Your assistant can understand them directly from their names and descriptions:
 
 | | Read | Update |
 | --- | --- | --- |
 | **Catalog contents** | `catalogs_get` | `catalogs_update` |
 | **Home arrangement** | `home_layout_get` | `home_layout_update` |
 | **Watch history** | `watch_history` (`get` or batch `check`) | `watch_history` (`mark_watched` or `mark_unwatched`) |
+
+With the **optional Android TV integration** enabled (`TV_OPEN_ENABLED=true`, Firebase configured), three *additional* tools appear: `tv_pair`, `tv_devices`, and `tv_open_title`. With the flag disabled, these tools do **not** appear at all. See [Android TV remote and ADB setup](/docs/tv-remote). `tv_open_title` sends a Stremio **details page** deep link, not an autoplay command, and an FCM send acknowledgment is not a TV-delivery acknowledgment.
 
 **Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons. **Watch history** reads the Stremio account and updates explicit watched status; it never creates its own streaming or recommendation service.
 

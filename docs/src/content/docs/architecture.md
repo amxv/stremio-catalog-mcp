@@ -19,7 +19,7 @@ Stremio on the TV ── GET /stremio/<feed>/... ───┘
                   ↳ Existing Cinemeta + streaming add-ons
 ```
 
-The assistant does all the **research and recommendations** using its normal tools. This service just persists and serves the resulting catalog rows. No LLM runs inside the server.
+The assistant does all the **research and recommendations** using its normal tools. This service just persists and serves the resulting catalog rows. No LLM runs inside the server. An **optional Android TV remote**, disabled by default, adds FCM pushes to a tiny native receiver; it does not change Stremio catalog or playback APIs.
 
 It advertises Stremio's **catalog** resource, not `meta`, `stream`, or `subtitles`. Each item uses a standard IMDb `tt...` ID with `movie` or `series` type, so Stremio's existing Cinemeta metadata and streaming providers can handle the same titles. Cinemeta search is used only to resolve supplied titles and posters, rejecting ambiguous matches.
 
@@ -60,11 +60,13 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 - `STREMIO_FEED_TOKEN`: separate read-only feed token embedded in Stremio's catalog URL; anyone with that URL can read the catalog contents, not modify them through MCP.
 - Redis REST credentials: private Vercel production variables; the server accepts existing Upstash-compatible HTTPS Redis REST endpoints, not arbitrary Redis TCP URLs. Durable state isn't tied to a Vercel function instance.
 - `STREMIO_AUTH_KEY`: sensitive Stremio session, used only for the account API and never returned through MCP tools.
+- `TV_OPEN_ENABLED`: explicit `true` enables three additional MCP TV tools and public, narrowly scoped pairing/credential-refresh routes. Otherwise there are exactly five MCP tools.
+- `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_JSON`: private server-side FCM HTTP v1 credential. The TV APK contains only public Firebase Android app IDs and a separate per-device credential, never the MCP key.
 - Private account backups: may include other installed add-ons' configured URLs, so they aren't exposed through the feed or MCP.
 
 **Tool annotations aren't permissions.** Some clients will see `readOnlyHint: true`, but several tools really do edit or delete rows. Treat these as write-capable operations and rely on the actual API key and the user's approval policy, not metadata hints.
 
-Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Watch history is read from Stremio's datastore and all watch-history inputs are IMDb IDs, never title-based searches. The `check` action reads 1–50 requested IMDb IDs in a **single datastoreGet call**, without scanning the entire account; recorded series fetch Cinemeta metadata with bounded parallelism to decode anchored watched-episode bitfields. It returns exact watched episodes and `unverified` on ambiguous history. `mark_watched` / `mark_unwatched` update only the targeted library item through datastorePut and verify a subsequent read; selective episode changes preserve unrelated playback fields, while an entire-title unwatch deliberately clears all playback state. Scheduled recommendations, cross-app history imports, playback controls, and multi-tenant account management are outside this service's scope.
+Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Watch history is read from Stremio's datastore and all watch-history inputs are IMDb IDs, never title-based searches. The `check` action reads 1–50 requested IMDb IDs in a **single datastoreGet call**, without scanning the entire account; recorded series fetch Cinemeta metadata with bounded parallelism to decode anchored watched-episode bitfields. It returns exact watched episodes and `unverified` on ambiguous history. `mark_watched` / `mark_unwatched` update only the targeted library item through datastorePut and verify a subsequent read; selective episode changes preserve unrelated playback fields, while an entire-title unwatch deliberately clears all playback state. Scheduled recommendations, cross-app history imports, automatic playback, and multi-tenant account management are outside this service's scope. Optional TV navigation and pairing are documented in [Android TV remote](/docs/tv-remote).
 
 ## Code map and upstream references
 

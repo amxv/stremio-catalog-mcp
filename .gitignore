@@ -13,3 +13,13 @@
 .env*
 !.env.example
 .DS_Store
+
+# Optional Android TV companion build outputs and per-user Firebase config
+/android-tv/.gradle/
+/android-tv/.idea/
+/android-tv/.kotlin/
+/android-tv/**/build/
+/android-tv/local.properties
+/android-tv/app/google-services.json
+/android-tv/*.jks
+/android-tv/*.keystore

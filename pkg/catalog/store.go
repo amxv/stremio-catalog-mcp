@@ -48,6 +48,12 @@ type RedisStore struct {
 	Client *http.Client
 }
 
+// Do exposes the existing Upstash REST transport to optional features that
+// maintain their own namespaced keys. Callers must not use the catalog key.
+func (s *RedisStore) Do(ctx context.Context, args ...any) (json.RawMessage, error) {
+	return s.command(ctx, args...)
+}
+
 func (s *RedisStore) command(ctx context.Context, args ...any) (json.RawMessage, error) {
 	if !strings.HasPrefix(s.URL, "https://") || s.Token == "" || s.Key == "" {
 		return nil, errors.New("durable Redis storage is not configured")

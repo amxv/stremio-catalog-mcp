@@ -12,6 +12,7 @@ import (
 // serialization is the contract clients will read from tools/list.
 func TestMCPToolAnnotations(t *testing.T) {
 	t.Setenv("MCP_API_KEY", "test-only-key")
+	t.Setenv("TV_OPEN_ENABLED", "false")
 	req := httptest.NewRequest(http.MethodPost, "/mcp?key=test-only-key", strings.NewReader(`{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -92,6 +93,83 @@ func TestMCPToolAnnotations(t *testing.T) {
 	}
 	if len(expected) > 0 {
 		t.Fatalf("published tools missing from tools/list: %v", expected)
+	}
+}
+
+func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
+	t.Setenv("MCP_API_KEY", "test-only-key")
+	for _, tc := range []struct {
+		enabled  string
+		expected []string
+	}{
+		{"", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history"}},
+		{"FALSE", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history"}},
+		{"true", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history", "tv_pair", "tv_devices", "tv_open_title"}},
+	} {
+		t.Run("flag_"+tc.enabled, func(t *testing.T) {
+			t.Setenv("TV_OPEN_ENABLED", tc.enabled)
+			req := httptest.NewRequest(http.MethodPost, "/mcp?key=test-only-key",
+				strings.NewReader(`{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json, text/event-stream")
+			req.Header.Set("Mcp-Protocol-Version", "2025-11-25")
+			recorder := httptest.NewRecorder()
+			Handler().ServeHTTP(recorder, req)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("HTTP %d: %s", recorder.Code, recorder.Body.String())
+			}
+			var response struct {
+				Result struct {
+					Tools []struct {
+						Name        string                     `json:"name"`
+						Annotations map[string]json.RawMessage `json:"annotations"`
+						InputSchema struct {
+							Properties map[string]json.RawMessage `json:"properties"`
+						} `json:"inputSchema"`
+					} `json:"tools"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			actual := map[string]bool{}
+			for _, tool := range response.Result.Tools {
+				if actual[tool.Name] {
+					t.Fatalf("duplicate tool %s", tool.Name)
+				}
+				actual[tool.Name] = true
+				if string(tool.Annotations["readOnlyHint"]) != "true" {
+					t.Errorf("%s missing readonly hint", tool.Name)
+				}
+				if _, ok := tool.Annotations["openWorldHint"]; ok {
+					t.Errorf("%s sets open-world hint", tool.Name)
+				}
+				if strings.HasPrefix(tool.Name, "tv_") {
+					var required []string
+					switch tool.Name {
+					case "tv_pair":
+						required = []string{"code"}
+					case "tv_devices":
+						required = []string{"action", "device_id"}
+					case "tv_open_title":
+						required = []string{"media_type", "imdb_id", "device_id"}
+					}
+					for _, key := range required {
+						if len(tool.InputSchema.Properties[key]) == 0 {
+							t.Errorf("%s missing %s", tool.Name, key)
+						}
+					}
+				}
+			}
+			if len(actual) != len(tc.expected) {
+				t.Fatalf("expected %d tools, got %v", len(tc.expected), actual)
+			}
+			for _, name := range tc.expected {
+				if !actual[name] {
+					t.Errorf("missing %s", name)
+				}
+			}
+		})
 	}
 }
 

@@ -16,6 +16,14 @@ The **five-tool interface** stays focused: `catalogs_get`/`catalogs_update` mana
 
 For example: **“Hide Cinemeta's Popular and Featured rows, move my MCU row first, and place my catalog add-on above Cinemeta.”** `home_layout_get` lists the current layout; one batched `home_layout_update` call supports visibility changes, row moves, addon moves, and a no-write `dry_run` preview. Third-party rows without optional search/genre filters cannot be safely hidden. Individual rows cannot be moved across addon boundaries, although complete addons can be reordered.
 
+## Optional: open a title directly on Android TV
+
+Want to say **"Open Inception on my TV"** and have Stremio display its details? There is an optional, separately enabled **FCM push + tiny Android TV companion**. It opens the detail page without autoplaying, and needs no laptop, homebox, ADB session, or polling service after the initial sideload.
+
+**Default behavior is unchanged:** `TV_OPEN_ENABLED` is off, and the MCP exposes precisely the original **five tools**. With `TV_OPEN_ENABLED=true` and Firebase credentials configured, it additionally offers `tv_pair`, `tv_devices`, and `tv_open_title`. It keeps the FCM server credential in Vercel, stores paired devices separately in Upstash, and sends only short-lived data pushes. Firebase Cloud Messaging itself is free on the Spark plan, with no payment method required.
+
+See **[Android TV remote setup, Firebase provisioning, and ADB sideloading](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote)**. This is an **experimental integration**: automatic navigation needs a user-granted background-launch exemption on supported Android TVs. Notification/manual-open fallback is available if the TV blocks it. Google Play Services must be installed. No actual TV behavior can be guaranteed by a build-only test.
+
 ## Let your agent set it up
 
 Fork or clone this repository and give your coding agent this instruction:
@@ -47,11 +55,12 @@ Try: **“Find six excellent mind-bending sci-fi series and make a Stremio row c
 - **Redis REST (Upstash-compatible):** durable, ordered rows and synchronization safeguards.
 - **Cinemeta:** IMDb ID lookup, with playback handled by your existing add-ons.
 - **Stremio account API:** optional account linking to add/rename rows, manage Home layout, and read/update watch status. The account API is unversioned; watch status reflects what Stremio has synced from your devices.
+- **Optional Android TV remote:** FCM + Java receiver, only when explicitly enabled. No persistent TV service; the companion handles push data and launches a Stremio details deep link.
 
 One deployment manages **one Stremio account**. Keep all generated keys, Redis tokens, and the Stremio session private. See the website's [technical reference](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for security and limitations.
 
 ## Develop
 
-Go 1.26+, Bun for the optional docs site, and a Vercel account for hosting. Run `make check` to test the Go server; `make docs-check` and `make docs-build` validate the Astro/ZueDocs site. Credentials aren't required for tests.
+Go 1.26+, Bun for the optional docs site, and a Vercel account for hosting. Run `make check` to test the Go server; `make docs-check` and `make docs-build` validate the Astro/ZueDocs site. Credentials aren't required for tests. The optional Android TV receiver builds with JDK 17, Android SDK 36, and `cd android-tv && ./gradlew :app:assembleDebug`. A build without `app/google-services.json` is only a compile smoke test and **cannot pair with FCM**.
 
 Open source under [Apache-2.0](LICENSE). Self-host it on your own Vercel and Redis accounts.
