@@ -55,3 +55,28 @@ test('TV docs are opt-in and guide an agent through Vercel, ADB and real-device 
   assert.ok(api.rewrites.some(route => route.source === '/tv/admin'));
   assert.ok(api.rewrites.some(route => route.source === '/tv/device/receipt'));
 });
+
+test('the MCP tools reference covers all seven tools with valid fenced JSON examples', () => {
+  const guide = readFileSync(path.join(site, 'src/content/docs/tools.md'), 'utf8');
+  const names = [...guide.matchAll(/^## \d+\. `([a-z_]+)`:/gm)].map((m) => m[1]);
+  assert.deepEqual(names, [
+    'title_lookup', 'catalogs_get', 'catalogs_update',
+    'home_layout_get', 'home_layout_update', 'watch_history', 'tv_open_title',
+  ]);
+  for (const name of names) {
+    const start = guide.indexOf('`' + name + '`:', guide.indexOf('## '));
+    assert.ok(start > 0, `missing ${name} reference section`);
+    const body = guide.slice(start, guide.indexOf('\n## ', start) < 0 ? undefined : guide.indexOf('\n## ', start));
+    assert.match(body, /\*\*Input schema/);
+    assert.match(body, /\*\*Call/);
+    assert.match(body, /\*\*Example .*response/);
+  }
+  const blocks = [...guide.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+  assert.ok(blocks.length >= 14, 'each of seven tools needs a JSON call and result');
+  for (const [i, block] of blocks.entries()) {
+    assert.doesNotThrow(() => JSON.parse(block), `invalid JSON code example ${i + 1}`);
+  }
+  assert.match(guide, /TMDB_READ_ACCESS_TOKEN/);
+  assert.match(guide, /TV_OPEN_ENABLED=true/);
+  assert.match(guide, /IMDb ratings come from Cinemeta/);
+});

@@ -52,4 +52,4 @@ The MCP does **not** control playback, install streaming providers, or guarantee
 
 You can ask a scheduled AI task to research picks and update a stable *Tonight's Picks* row. Whether that task can call the MCP without extra approval depends on your assistant's scheduling, plugin, and permission settings. The Stremio server does not run its own recommendation scheduler.
 
-See [all five MCP tools](/docs/tools) for the exact operations your assistant can use.
+See the [MCP tools reference](/docs/tools) for all five core tools and the two optional tools, with input schemas and example calls.

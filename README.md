@@ -1,40 +1,46 @@
 # Stremio Catalog MCP
 
-**Organize Stremio with your AI assistant.** This self-hosted [MCP](https://modelcontextprotocol.io/) server lets ChatGPT and other AI agents manage your Stremio Home screen, custom movie and TV collections, and watch history. It can also open titles on your Android TV if you opt in.
+Manage [Stremio](https://www.stremio.com/) with ChatGPT or any MCP-capable agent. Create your own movie and TV collections, arrange the Home screen, and check or update watch history by chatting.
 
-**[Website](https://stremio-catalog-mcp.ashray.xyz/) · [Get started](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) · [All tools](https://stremio-catalog-mcp.ashray.xyz/docs/tools) · [TV remote](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote)**
+**[Website](https://stremio-catalog-mcp.ashray.xyz/) · [Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) · [MCP tools and examples](https://stremio-catalog-mcp.ashray.xyz/docs/tools)**
 
-## What can it do?
+## What it does
 
-- **Create collections.** Make, edit, reorder, and delete custom movie or series rows. Add or remove titles, with posters and metadata such as IMDb ratings, descriptions, and cast from Cinemeta.
-- **Customize Home.** Hide or show compatible catalog rows, rearrange rows within an add-on, and change the order of installed add-ons—without removing your streaming providers.
-- **Manage watch history.** Check up to 50 IMDb titles in one call, see exactly which TV episodes you've watched, and mark a movie, series, or specific episodes watched or unwatched. Results avoid spoiling future episodes.
-- **Open titles on Android TV (optional).** Ask your AI to open a movie, show, or exact episode in Stremio. No autoplay. One paired TV, delivery acknowledgments, and no always-running laptop or TV service.
+- **Custom catalogs:** Create, edit, reorder, and remove collections of movies or shows, complete with posters.
+- **Home layout:** Hide unwanted rows and reorder catalogs or installed add-ons without uninstalling streaming providers.
+- **Watch history:** Check up to 50 IMDb IDs at once, see watched episodes without spoilers, or mark movies and episodes watched or unwatched.
+- **Title lookup (optional):** Resolve up to 50 movie and TV names to IMDb IDs using TMDB. Results include year, language, genres, and IMDb ratings when available, with extra detail for ambiguous titles.
+- **Android TV remote (optional):** Open a movie, show, or specific episode in Stremio on your paired TV, without autoplay.
 
-Your AI can research recommendations and send them to Stremio. **This project doesn't supply streams or replace Stremio's existing add-ons.**
+Your agent handles discovery and recommendations. This server handles Stremio. **It doesn't provide streams or replace your installed add-ons.**
 
-## Try asking
+## Ask your agent
 
-> “Make a Stremio collection of great sci-fi thrillers.”
+> “Make a sci-fi collection from the shows we discussed.”
 >
 > “Hide the default Popular rows and move my MCU collection to the top.”
 >
 > “Which Breaking Bad episodes have I watched?”
 >
-> “Open Breaking Bad season 3, episode 4 on my TV.” *(Optional TV integration)*
+> “Find the IMDb IDs for Suits and Spider-Man 3.” *(Optional title lookup)*
+>
+> “Open Breaking Bad season 3, episode 4 on my TV.” *(Optional TV remote)*
 
 ## Get started
 
-Deploy your own instance using **Vercel** and **Upstash-compatible Redis**, then connect your Stremio account and AI assistant. The [agent-friendly Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) walks through everything, or you can ask a coding agent:
+Self-host the Go server on **Vercel**, with an **Upstash-compatible Redis REST** database. Follow the [Quickstart](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) to connect your Stremio account and MCP client. The guide includes a setup helper and a manual option.
 
-> Set up [Stremio Catalog MCP](https://stremio-catalog-mcp.ashray.xyz/docs/quickstart) for me using my Vercel and Stremio accounts. Follow the self-hosting guide, use Free services where possible, and ask me for required sign-ins. Keep credentials private and help me connect the MCP to ChatGPT.
+The MCP has **five core tools**. Two more can be enabled independently:
 
-**TV control is off by default.** The MCP has five tools normally; enabling `TV_OPEN_ENABLED=true` adds only `tv_open_title`. Follow the separate [Android TV setup guide](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote) for Firebase Spark, ADB installation, and pairing. You can use the rest of the project without Firebase or an Android TV.
+| Feature | Enable with | Added tool |
+| --- | --- | --- |
+| TMDB title lookup | `TMDB_READ_ACCESS_TOKEN` (or `TMDB_API_KEY`) | `title_lookup` |
+| Android TV remote | `TV_OPEN_ENABLED=true` and [TV setup](https://stremio-catalog-mcp.ashray.xyz/docs/tv-remote) | `tv_open_title` |
+
+With both enabled, your agent sees **seven tools**. Neither integration is required for catalog and history management. See the [tools reference](https://stremio-catalog-mcp.ashray.xyz/docs/tools) for complete input schemas and copyable examples.
 
 ## Development
 
-Written in Go, hosted on Vercel, with Redis for state and Cinemeta for title metadata. The optional Android TV companion uses Firebase Cloud Messaging.
-
-Run `make check` for Go tests and vet. See the [developer documentation](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for architecture, deployment, and other checks.
+The MCP server and Stremio add-on are written in Go. The documentation site is Astro. Run `make check` for Go tests and vet, or see the [architecture guide](https://stremio-catalog-mcp.ashray.xyz/docs/architecture) for implementation and deployment details.
 
 Licensed under [Apache 2.0](LICENSE).

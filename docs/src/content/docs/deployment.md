@@ -95,6 +95,7 @@ Identify the project's actual, **verified HTTPS** production domain, often `http
 | `UPSTASH_REDIS_REST_TOKEN` | Redis REST bearer token. |
 | `PUBLIC_BASE_URL` | Verified Vercel API HTTPS origin, not the docs domain. |
 | `STREMIO_AUTH_KEY` | Recommended Stremio session for adding/renaming/removing rows across devices. |
+| `TMDB_READ_ACCESS_TOKEN` | Optional TMDB read token that enables `title_lookup`; `TMDB_API_KEY` also works. |
 
 The agent can generate the **two independent 32-byte application keys** using `openssl rand -hex 32`, store them temporarily in owner-only files (or a password manager), and send private values to Vercel over **stdin**. For example:
 
@@ -162,7 +163,7 @@ The human opens **ChatGPT → Plugins → Create custom MCP server → No authen
 
 ## Verify and troubleshoot
 
-Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose **five tools by default** (or six with the [optional Android TV remote](/docs/tv-remote) explicitly enabled). Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed. `watch_history` requires optional `STREMIO_AUTH_KEY`; verify read access first, and only mark something watched on explicit instruction.
+Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**. Authenticated `tools/list` should expose **five core tools**, one more for each optional feature enabled (`title_lookup` via TMDB and `tv_open_title` via [Android TV](/docs/tv-remote)), or **seven with both**. Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed. `watch_history` requires optional `STREMIO_AUTH_KEY`; verify read access first, and only mark something watched on explicit instruction.
 
 Stremio may cache both rows and manifests, so a refresh or restart can be necessary. The Stremio account API is not a stable public third-party interface; see [Architecture & security](/docs/architecture).
 

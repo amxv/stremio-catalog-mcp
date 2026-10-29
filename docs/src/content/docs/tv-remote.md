@@ -8,7 +8,7 @@ summary: One optional MCP tool, private browser-based single-TV pairing, Firebas
 
 This **opt-in, experimental** feature opens a movie or series details page in **Stremio for Android TV**, without automatically starting playback. Use it to say "Open Inception on my TV" from ChatGPT on your phone. You do **not** need a running laptop, home server, ADB connection, or a TV polling loop after installation.
 
-**Nothing changes for existing users.** With `TV_OPEN_ENABLED` unset or anything other than the literal `true`, the MCP still exposes exactly its original five tools. No companion APK or Firebase project is required. The single `tv_open_title` MCP tool, private setup page, and TV pairing endpoints are absent.
+**Nothing changes for existing users.** With `TV_OPEN_ENABLED` unset or anything other than the literal `true`, the MCP still exposes exactly its original five tools (plus `title_lookup` only if TMDB is configured separately). No companion APK or Firebase project is required. The single `tv_open_title` MCP tool, private setup page, and TV pairing endpoints are absent.
 
 ## Start here: give these instructions to your coding agent
 
@@ -20,7 +20,7 @@ If you already self-host Stremio Catalog MCP, **do not redeploy the whole servic
 
 | Check | Expected result |
 | --- | --- |
-| Core MCP unchanged | Five tools if TV is disabled; **six** when enabled, with only `tv_open_title` added |
+| Core MCP unchanged | Five tools if TV is disabled; **six** when enabled, with only `tv_open_title` added. Add one more if TMDB lookup is independently enabled. |
 | Cloud project | Firebase **Spark**, FCM API enabled, registered Android app, no paid products or billing added |
 | Vercel | Existing Go API deployed and responding; its FCM JSON and setup key stored as **Secrets** |
 | TV | APK installed; **one** paired TV appears at `https://YOUR_API_ORIGIN/tv/setup` |
@@ -193,7 +193,7 @@ vercel deploy --prod --yes
 vercel env ls  # Verify names, environments and Secret/Config types only.
 ```
 
-The new environment variables only take effect on a **new deployment**. The existing Upstash Redis database is reused with **separate `:tv:` namespaced keys**; catalog documents and Stremio account credentials are untouched. Check that `https://YOUR_API_ORIGIN/tv/setup` responds with HTTP 200 and that a request without the setup bearer credential to `/tv/admin` responds with HTTP 401. An unauthenticated `/mcp` still responds with HTTP 401. The authenticated MCP `tools/list` should report **six tools**, not eight: the original five plus `tv_open_title`.
+The new environment variables only take effect on a **new deployment**. The existing Upstash Redis database is reused with **separate `:tv:` namespaced keys**; catalog documents and Stremio account credentials are untouched. Check that `https://YOUR_API_ORIGIN/tv/setup` responds with HTTP 200 and that a request without the setup bearer credential to `/tv/admin` responds with HTTP 401. An unauthenticated `/mcp` still responds with HTTP 401. The authenticated MCP `tools/list` should report **six tools**, not eight, for the original five plus `tv_open_title`. If `title_lookup` is also enabled, expect seven.
 
 If using a locally managed process instead of Vercel, export those same four environment variables and your existing Redis configuration. Do not put a service-account private key into `PUBLIC_BASE_URL`, the TV app, or your Stremio add-on manifest.
 
@@ -325,7 +325,7 @@ After testing, return to Stremio and disconnect ADB using `adb disconnect TV_IP:
 
 ## 4. Use ChatGPT
 
-With `TV_OPEN_ENABLED=true`, there is **exactly one additional MCP tool**, `tv_open_title`. It accepts `media_type` (`movie` or `series`) and an IMDb ID (`imdb_id`, `tt...`), plus optional `season` and `episode` for a specific series episode. There is no device selection, pairing, or device-management surface in MCP. With the TV feature disabled, the original five tools remain unchanged.
+With `TV_OPEN_ENABLED=true`, there is **exactly one additional MCP tool** for TV control, `tv_open_title`. It accepts `media_type` (`movie` or `series`) and an IMDb ID (`imdb_id`, `tt...`), plus optional `season` and `episode` for a specific series episode. There is no device selection, pairing, or device-management surface in MCP. With the TV feature disabled, the original five core tools remain unchanged (unless optional TMDB lookup adds `title_lookup`).
 
 Have the user refresh or reconnect their **existing** custom MCP connection in ChatGPT if its tool list still shows only the five default tools after the new deployment. Don't create a second connector just to discover the added tool, and don't expose device pairing as a model tool.
 

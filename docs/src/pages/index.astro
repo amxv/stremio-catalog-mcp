@@ -10,16 +10,18 @@ const examples = [
 ];
 
 const steps = [
-  { number: "01", type: "A CONVERSATION", title: "Ask a better question.", detail: "Describe what you're in the mood for. ChatGPT can research, compare, remember context, and choose the titles, just as it does today.", example: "“Some clever, funny murder mysteries. Nothing too dark.”" },
-  { number: "02", type: "ONE TOOL CALL", title: "Send the good stuff.", detail: "The MCP receives a row name and the titles you picked. It resolves their IMDb IDs and creates a native Stremio catalog, without making recommendations itself.", example: "catalogs_update({ changes: [...] })" },
-  { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Your catalog appears alongside your other rows. Open any title and the metadata and streaming add-ons you already love take over.", example: "Murder mysteries with a wink  →" }
+  { number: "01", type: "A CONVERSATION", title: "Find your next watch.", detail: "Ask for recommendations, or name a movie or show. Optional title lookup helps your agent find the exact IMDb ID, even when names overlap.", example: "“Some clever, funny murder mysteries. Nothing too dark.”" },
+  { number: "02", type: "YOUR STREMIO, ORGANIZED", title: "Put it where you want.", detail: "Make collections, reorder Home rows, or check what you've already watched. Your agent handles the requests; Stremio keeps your existing add-ons.", example: "catalogs_update · home_layout_update · watch_history" },
+  { number: "03", type: "YOUR TV", title: "Skip straight to the couch.", detail: "Browse your new catalog in Stremio, or opt into the Android TV remote to open the exact title or episode. Streaming and playback stay in Stremio.", example: "Murder mysteries with a wink  →" }
 ];
 
 const features = [
-  { id: "A", title: "Make a row. Make it yours.", copy: "Create collections for any mood, theme, director, era, or oddly specific obsession. Every row gets its own name." },
-  { id: "B", title: "Shape your whole Home screen.", copy: "Hide unwanted default rows, reorder catalogs from installed add-ons, and arrange your own lists. All by chatting." },
-  { id: "C", title: "Keep what already works.", copy: "Your current Stremio add-ons still provide the streams. Cinemeta-compatible IDs tie everything together." },
-  { id: "D", title: "Works with any MCP agent.", copy: "ChatGPT today, another MCP-capable client tomorrow. The bridge stays deliberately small and model-independent." }
+  { id: "A", title: "Make a row. Make it yours.", copy: "Create, edit, and reorder custom movie and TV collections, with titles and posters from Cinemeta." },
+  { id: "B", title: "Shape your whole Home screen.", copy: "Hide unwanted default rows and move catalogs or whole installed add-ons without removing your streaming providers." },
+  { id: "C", title: "Know what you've watched.", copy: "Check up to 50 titles at once, see the episodes you've finished, and update watch history without future-episode spoilers." },
+  { id: "D", title: "Find the exact title.", copy: "Optional TMDB lookup finds IMDb IDs in batches, with year, language, genres, and available IMDb ratings." },
+  { id: "E", title: "Open it on Android TV.", copy: "Optionally open a movie, show, or exact episode on a paired TV. No autoplay or always-running computer." },
+  { id: "F", title: "Your agent, your add-ons.", copy: "ChatGPT or any MCP client can use the same tools. Your installed Stremio providers still handle the streams." }
 ];
 ---
 
@@ -29,10 +31,10 @@ const features = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101512" />
-    <meta name="description" content="From a good question to a great watch. Publish ChatGPT's movie and TV recommendations directly as Stremio catalog rows, with one tiny MCP bridge." />
+    <meta name="description" content="Manage Stremio with your AI assistant: custom catalogs, Home layout, watch history, and optional IMDb title lookup and Android TV control." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Stremio Catalog MCP — From chat to couch" />
-    <meta property="og:description" content="Your AI does the recommending. Stremio does the streaming. This tiny MCP connects the two." />
+    <meta property="og:description" content="Create catalogs, organize Home, check watch history, find IMDb IDs, and open titles on Android TV, all with an MCP agent." />
     <title>Stremio Catalog MCP — From chat to couch</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -60,9 +62,9 @@ const features = [
           <div class="hero-copy">
             <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> THE MISSING LINK IN MOVIE NIGHT <span class="eyebrow-counter">/ 001</span></p>
             <h1 id="hero-title">From a good question to a <em>great watch.</em></h1>
-            <p class="lead">You already ask ChatGPT what to watch. Now send those recommendations straight to your Stremio home screen, as native, editable catalog rows.</p>
-            <div class="hero-actions"><a class="btn btn-primary" href="/docs/quickstart">Make your first catalog <ArrowUpRight /></a><a class="btn btn-outline" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
-            <p class="hero-footnote"><Asterisk /> <strong>Your agent recommends.</strong> Your Stremio plays. We just connect them.</p>
+            <p class="lead">Create collections, arrange your Home screen, and manage watch history with your AI assistant. Optional title lookup and TV control make the handoff even easier.</p>
+            <div class="hero-actions"><a class="btn btn-primary" href="/docs/quickstart">Get started <ArrowUpRight /></a><a class="btn btn-outline" href="/docs/tools">Explore the seven tools <ArrowUpRight /></a></div>
+            <p class="hero-footnote"><Asterisk /> <strong>Five core tools. Two optional extras.</strong> Your streaming add-ons stay yours.</p>
           </div>
 
           <div class="hero-art" aria-label="Illustration of an AI conversation sending a catalog row to Stremio">
@@ -79,16 +81,21 @@ const features = [
 
         <div class="marquee" aria-label="Your agent recommends. Stremio plays. No new streaming app."><div aria-hidden="true"><span>THE RECOMMENDATION IS THE EASY PART</span><b><Asterisk /></b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b><Asterisk /></b><span>THE RECOMMENDATION IS THE EASY PART</span><b><Asterisk /></b><span>GETTING IT ON YOUR TV IS THE MAGIC</span><b><Asterisk /></b></div></div>
 
-        <section class="section how" id="how-it-works"><div class="section-intro"><div><p class="eyebrow eyebrow-light">/ THE THREE ACTS</p><h2>A little less browsing.<br /><em>A lot more watching.</em></h2></div><p>From conversation to couch, in three tiny steps. The intelligence stays with your agent. The watching stays with Stremio.</p></div><div class="steps">{steps.map((step) => (<article class="step"><div class="step-top"><span>{step.number} / 03</span><span>{step.type}</span></div><div class="step-symbol" aria-hidden="true">{step.number === "01" ? <Asterisk /> : step.number === "02" ? <ArrowUpRight /> : <svg viewBox="0 0 24 24" class="glyph-play" fill="currentColor" aria-hidden="true"><path d="M6 3.5c0-.8.9-1.2 1.5-.8l13 8.5c.6.4.6 1.3 0 1.7l-13 8.5c-.6.4-1.5 0-1.5-.8z" /></svg>}</div><h3>{step.title}</h3><p>{step.detail}</p><div class="step-example">{step.example}</div></article>))}</div></section>
+        <section class="section how" id="how-it-works"><div class="section-intro"><div><p class="eyebrow eyebrow-light">/ THE THREE ACTS</p><h2>A little less browsing.<br /><em>A lot more watching.</em></h2></div><p>From conversation to couch, in three simple steps. Your agent manages the details. Your existing Stremio setup does the streaming.</p></div><div class="steps">{steps.map((step) => (<article class="step"><div class="step-top"><span>{step.number} / 03</span><span>{step.type}</span></div><div class="step-symbol" aria-hidden="true">{step.number === "01" ? <Asterisk /> : step.number === "02" ? <ArrowUpRight /> : <svg viewBox="0 0 24 24" class="glyph-play" fill="currentColor" aria-hidden="true"><path d="M6 3.5c0-.8.9-1.2 1.5-.8l13 8.5c.6.4.6 1.3 0 1.7l-13 8.5c-.6.4-1.5 0-1.5-.8z" /></svg>}</div><h3>{step.title}</h3><p>{step.detail}</p><div class="step-example">{step.example}</div></article>))}</div></section>
 
         <section class="statement" id="why-it-exists"><p class="eyebrow eyebrow-dark">/ NOT ANOTHER RECOMMENDATION ENGINE</p><h2>You've already found <em>the good stuff.</em><br /><span>Now give it somewhere to live.</span></h2><div class="statement-bottom"><p>ChatGPT knows the conversation. Cinemeta knows the movie. Your streaming add-ons know how to play it. <strong>This MCP is the missing handoff.</strong></p><div class="statement-seal" aria-hidden="true"><span>BUILT FOR</span><strong>THE<br />COUCH</strong><span>NOT THE FEED</span></div></div></section>
 
-        <section class="section feature-section"><div class="section-intro feature-intro"><div><p class="eyebrow eyebrow-light">/ SMALL BRIDGE, BIG DIFFERENCE</p><h2>Make your screen<br /><em>feel like yours.</em></h2></div><p>Dynamic from day one, with no reinvention of the recommendation stack and no interference with how you stream.</p></div><div class="features">{features.map((feature) => (<article class="feature"><span class="feature-id">{feature.id} /</span><h3>{feature.title}</h3><p>{feature.copy}</p><span class="feature-arrow" aria-hidden="true"><ArrowUpRight /></span></article>))}</div></section>
+        <section class="section feature-section"><div class="section-intro feature-intro"><div><p class="eyebrow eyebrow-light">/ FIVE CORE TOOLS + TWO OPTIONAL</p><h2>Make your screen<br /><em>feel like yours.</em></h2></div><p>From titles to watch history, your agent can handle the busywork. Turn on lookup or Android TV control only if you want it.</p></div><div class="features">{features.map((feature) => (<article class="feature"><span class="feature-id">{feature.id} /</span><h3>{feature.title}</h3><p>{feature.copy}</p><span class="feature-arrow" aria-hidden="true"><ArrowUpRight /></span></article>))}</div></section>
 
-        <section class="cta-band"><Asterisk class="cta-decoration" /><div><p class="eyebrow eyebrow-dark">/ READY FOR MOVIE NIGHT?</p><h2>Talk about it.<br /><em>Then watch it.</em></h2><p>One Go server, one Stremio add-on, one very satisfying shortcut from recommendation to remote control.</p></div><a href="/docs/quickstart" class="cta-link">Read the quickstart <ArrowUpRight /></a></section>
+        <section class="cta-band"><Asterisk class="cta-decoration" /><div><p class="eyebrow eyebrow-dark">/ READY FOR MOVIE NIGHT?</p><h2>Talk about it.<br /><em>Then watch it.</em></h2><p>Self-host the Go MCP server and keep using your Stremio add-ons. Add title lookup or TV control when you're ready.</p></div><a href="/docs/quickstart" class="cta-link">Read the quickstart <ArrowUpRight /></a></section>
       </main>
 
       <footer class="footer"><a class="footer-brand" href="/">stremio<span>/</span>catalog<span class="footer-mcp">mcp</span></a><span>FROM CHAT TO COUCH. NO EXTRA CHANNELS.</span><div><a href="/docs">Docs <ArrowUpRight /></a><a href="/docs/tools">MCP tools <ArrowUpRight /></a><a href="https://github.com/amxv/stremio-catalog-mcp" target="_blank" rel="noopener noreferrer">Source <ArrowUpRight /></a></div></footer>
+      <div class="source-credit" aria-label="Metadata source credits">
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" aria-label="The Movie Database"><img src="/tmdb-logo.svg" width="28" height="21" alt="TMDB logo" loading="lazy" /></a>
+        <span>Optional title lookup uses TMDB data. This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
+        <a href="/docs/architecture#data-credits">Credits</a>
+      </div>
     </div>
 
     <script>

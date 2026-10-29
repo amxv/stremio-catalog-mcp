@@ -13,6 +13,8 @@ import (
 func TestMCPToolAnnotations(t *testing.T) {
 	t.Setenv("MCP_API_KEY", "test-only-key")
 	t.Setenv("TV_OPEN_ENABLED", "false")
+	t.Setenv("TMDB_READ_ACCESS_TOKEN", "")
+	t.Setenv("TMDB_API_KEY", "")
 	req := httptest.NewRequest(http.MethodPost, "/mcp?key=test-only-key", strings.NewReader(`{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -98,6 +100,8 @@ func TestMCPToolAnnotations(t *testing.T) {
 
 func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 	t.Setenv("MCP_API_KEY", "test-only-key")
+	t.Setenv("TMDB_READ_ACCESS_TOKEN", "")
+	t.Setenv("TMDB_API_KEY", "")
 	for _, tc := range []struct {
 		enabled  string
 		expected []string
@@ -180,6 +184,74 @@ func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 				if !actual[name] {
 					t.Errorf("missing %s", name)
 				}
+			}
+		})
+	}
+}
+
+func TestOptionalTitleLookupToolRequiresTMDBCredential(t *testing.T) {
+	t.Setenv("MCP_API_KEY", "test-only-key")
+	for _, tc := range []struct {
+		name, token, apiKey, tv string
+		expected                int
+	}{
+		{"disabled", "", "", "false", 5},
+		{"bearer", "test-token", "", "false", 6},
+		{"api-key", "", "test-api-key", "false", 6},
+		{"with-tv", "test-token", "", "true", 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TMDB_READ_ACCESS_TOKEN", tc.token)
+			t.Setenv("TMDB_API_KEY", tc.apiKey)
+			t.Setenv("TV_OPEN_ENABLED", tc.tv)
+			req := httptest.NewRequest(http.MethodPost, "/mcp?key=test-only-key", strings.NewReader(`{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json, text/event-stream")
+			req.Header.Set("Mcp-Protocol-Version", "2025-11-25")
+			recorder := httptest.NewRecorder()
+			Handler().ServeHTTP(recorder, req)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("HTTP %d: %s", recorder.Code, recorder.Body.String())
+			}
+			var response struct {
+				Result struct {
+					Tools []struct {
+						Name        string                     `json:"name"`
+						Description string                     `json:"description"`
+						Annotations map[string]json.RawMessage `json:"annotations"`
+						InputSchema struct {
+							Properties map[string]json.RawMessage `json:"properties"`
+						} `json:"inputSchema"`
+					} `json:"tools"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Result.Tools) != tc.expected {
+				t.Fatalf("expected %d tools, got %d", tc.expected, len(response.Result.Tools))
+			}
+			found := false
+			for _, tool := range response.Result.Tools {
+				if tool.Name != "title_lookup" {
+					continue
+				}
+				found = true
+				if string(tool.Annotations["readOnlyHint"]) != "true" {
+					t.Error("IMDb lookup must be read-only")
+				}
+				if _, exists := tool.Annotations["openWorldHint"]; exists {
+					t.Error("IMDb lookup must omit openWorldHint")
+				}
+				if len(tool.InputSchema.Properties) != 1 || len(tool.InputSchema.Properties["titles"]) == 0 {
+					t.Errorf("title lookup should only request titles: %v", tool.InputSchema.Properties)
+				}
+				if !strings.Contains(tool.Description, "IMDb") || !strings.Contains(tool.Description, "batch") {
+					t.Errorf("title lookup tool description should be short and specific: %s", tool.Description)
+				}
+			}
+			if found != (tc.token != "" || tc.apiKey != "") {
+				t.Errorf("unexpected title_lookup visibility: %v", found)
 			}
 		})
 	}

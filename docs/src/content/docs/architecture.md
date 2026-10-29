@@ -60,7 +60,8 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 - `STREMIO_FEED_TOKEN`: separate read-only feed token embedded in Stremio's catalog URL; anyone with that URL can read the catalog contents, not modify them through MCP.
 - Redis REST credentials: private Vercel production variables; the server accepts existing Upstash-compatible HTTPS Redis REST endpoints, not arbitrary Redis TCP URLs. Durable state isn't tied to a Vercel function instance.
 - `STREMIO_AUTH_KEY`: sensitive Stremio session, used only for the account API and never returned through MCP tools.
-- `TV_OPEN_ENABLED`: explicit `true` enables only `tv_open_title` (six MCP tools in total), plus a private TV setup page and narrowly scoped pairing/credential-refresh routes. Otherwise there are exactly five MCP tools and no TV routes.
+- `TV_OPEN_ENABLED`: explicit `true` enables `tv_open_title` plus a private TV setup page and narrowly scoped pairing/credential-refresh routes. Otherwise there are no TV routes.
+- `TMDB_READ_ACCESS_TOKEN` (or `TMDB_API_KEY`): optional credential for `title_lookup`. No TMDB tool appears without one. When both optional features are configured, the MCP exposes seven tools.
 - `TV_SETUP_KEY`: separate 32+ character server-side secret. The `/tv/setup` page sends it only through same-origin `Authorization: Bearer` requests to `/tv/admin`. Never transmit it in a URL, publish it, persist it in browser storage, or include it in the TV APK. Device pairing and revocation are not MCP operations. One TV is enforced atomically in Redis.
 - `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_JSON`: private server-side FCM HTTP v1 credential. The TV APK contains only public Firebase Android app IDs and a separate per-device credential, never the MCP key.
 - Private account backups: may include other installed add-ons' configured URLs, so they aren't exposed through the feed or MCP.
@@ -69,12 +70,25 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 
 Each deployment currently serves **one Stremio account**. For multiple people, deploy separate instances with separate credentials and Redis storage. Watch history is read from Stremio's datastore and all watch-history inputs are IMDb IDs, never title-based searches. The `check` action reads 1–50 requested IMDb IDs in a **single datastoreGet call**, without scanning the entire account; recorded series fetch Cinemeta metadata with bounded parallelism to decode anchored watched-episode bitfields. It returns exact watched episodes and `unverified` on ambiguous history. `mark_watched` / `mark_unwatched` update only the targeted library item through datastorePut and verify a subsequent read; selective episode changes preserve unrelated playback fields, while an entire-title unwatch deliberately clears all playback state. Scheduled recommendations, cross-app history imports, automatic playback, and multi-tenant account management are outside this service's scope. Optional TV navigation and pairing are documented in [Android TV remote](/docs/tv-remote).
 
+### Optional TMDB lookup performance
+
+Title queries run concurrently, as do IMDb external-ID lookups for possible matches. Within each warm Go instance, TMDB requests are limited to eight concurrent calls with an 18-request-per-second token bucket, leaving headroom below TMDB's [approximate 40 requests/second ceiling](https://developer.themoviedb.org/docs/rate-limiting). HTTP 429 and transient server errors trigger bounded retries (respecting `Retry-After`). Multiple Vercel instances do not share the in-memory limiter, so a provider 429 can still occur; a failed title is reported explicitly instead of guessing an IMDb ID. Optional Cinemeta ratings are fetched independently with short timeouts and never block a verified ID indefinitely.
+
 ## Code map and upstream references
 
 - `api/mcp.go`: Vercel Go Function for MCP and Stremio routes.
 - `pkg/server`: official Go MCP SDK, key validation, and tools.
 - `pkg/catalog`: validation, Cinemeta lookup, ordered rows and Redis storage.
+- `pkg/tmdb`: optional, rate-limited batch title search, external IMDb ID resolution, and genre mapping.
 - `pkg/stremio`: native add-on protocol and the account-sync adapter.
 - `cmd/setup`: optional self-hosting bootstrap with Free Upstash provisioning **or existing Redis REST credentials**, Agent Browser sign-in, and a secure clipboard handoff.
 
 Read the [Stremio add-on protocol](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md), [Cinemeta documentation](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/advanced.md#understanding-cinemeta), and [Stremio API client](https://github.com/Stremio/stremio-api-client) for upstream contracts.
+
+## Data credits
+
+<img src="/tmdb-logo.svg" width="48" height="35" alt="TMDB logo" />
+
+Optional IMDb-ID lookup uses metadata from [The Movie Database (TMDB)](https://www.themoviedb.org/). **This product uses the TMDB API but is not endorsed or certified by TMDB.** IMDb ratings, where available, are read separately from Cinemeta and are not TMDB's vote averages.
+
+TMDB logo © Travis Bell, reproduced unmodified from [the official logo](https://www.themoviedb.org/about/logos-attribution) via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Tmdb.new.logo.svg) under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). This media license is separate from the repository's Apache 2.0 code license.

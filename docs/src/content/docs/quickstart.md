@@ -76,11 +76,29 @@ Try asking ChatGPT:
 
 Open Stremio on your TV using the same account. Your new row should appear when Stremio refreshes its add-ons; restarting the app sometimes helps. Existing streaming add-ons handle playback.
 
-Next: [things to try](/docs/using-catalogs) · [MCP tools](/docs/tools)
+Next: [things to try](/docs/using-catalogs) · [all seven MCP tools and examples](/docs/tools)
+
+## Optional: find IMDb IDs by title
+
+To add the batch title lookup tool, set **one** TMDB credential in your Go API Vercel project:
+
+```text
+TMDB_READ_ACCESS_TOKEN=your-private-tmdb-read-token
+```
+
+An API v3 key works as an alternative:
+
+```text
+TMDB_API_KEY=your-private-tmdb-v3-key
+```
+
+Keep the real credential in Vercel's sensitive environment variables, not source control or the docs deployment. Redeploy the API after configuring it. This exposes **title_lookup**, which resolves up to 50 movie or TV names at a time to IMDb IDs, with language, genres, release year, and available IMDb ratings. No additional boolean flag is needed. See the [title lookup schema and examples](/docs/tools#1-title_lookup-find-the-right-imdb-id).
+
+This feature is independent of TV control. Your MCP exposes **five core tools**, **six with either optional feature**, and **seven with both**.
 
 ## Optional: have your agent connect an Android TV
 
-The base Stremio Catalog MCP needs **no TV companion or Firebase account** and exposes **five tools**. If you explicitly opt in, it can also open movie and series **details** (never autoplay) on **one paired Android TV** with the single extra tool `tv_open_title`.
+The base Stremio Catalog MCP needs **no TV companion or Firebase account** and exposes **five core tools**. If you explicitly opt in, it can also open movie and series **details** (never autoplay) on **one paired Android TV** with the extra tool `tv_open_title`. With TMDB lookup also enabled, the total is seven.
 
 Once your normal MCP deployment is working, give your coding agent this instruction:
 

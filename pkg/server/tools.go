@@ -8,6 +8,7 @@ import (
 
 	"github.com/amxv/stremio-catalog-mcp/pkg/catalog"
 	"github.com/amxv/stremio-catalog-mcp/pkg/stremio"
+	"github.com/amxv/stremio-catalog-mcp/pkg/tmdb"
 	"github.com/amxv/stremio-catalog-mcp/pkg/tvremote"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -21,6 +22,7 @@ type Runtime struct {
 	BaseURL         string
 	FeedToken       string
 	TV              *tvremote.Service
+	TMDB            *tmdb.Client
 }
 
 func runtimeFromEnv() Runtime {
@@ -38,7 +40,8 @@ func runtimeFromEnv() Runtime {
 		Manager: catalog.Manager{Store: store, Resolver: catalog.Cinemeta{}},
 		Account: account,
 		Store:   store, VisibilityStore: visibilityStore, BaseURL: os.Getenv("PUBLIC_BASE_URL"), FeedToken: os.Getenv("STREMIO_FEED_TOKEN"),
-		TV: tvremote.FromEnv(store),
+		TV:   tvremote.FromEnv(store),
+		TMDB: tmdb.FromEnv(),
 	}
 }
 
@@ -100,7 +103,7 @@ func catalogTool(name, description string) *mcp.Tool {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.7.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.8.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. Default: compact summaries. row_id returns one row's ordered titles/posters; include_titles reads all titles; include_install_url returns the private add-on URL only when requested. Use home_layout_get for other add-ons' rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
@@ -135,6 +138,13 @@ func serverFor(rt Runtime) *mcp.Server {
 		mcp.AddTool(s, catalogTool("tv_open_title", "Open an IMDb movie or series details page on the paired TV, without autoplay. Provide media_type and imdb_id; to select a series episode, also provide season (0 for specials) and episode (1+). Omit both for the series overview. Returns TV receipt status, not proof the screen changed."),
 			func(ctx context.Context, _ *mcp.CallToolRequest, input tvremote.OpenInput) (*mcp.CallToolResult, tvremote.OpenResult, error) {
 				output, err := rt.TV.OpenTitle(ctx, input)
+				return nil, output, err
+			})
+	}
+	if rt.TMDB != nil {
+		mcp.AddTool(s, catalogTool("title_lookup", "Resolve 1-50 movie or TV title names to IMDb IDs in one batch. Returns title, year, language, genres and IMDb rating when available; same-name matches also include media type, date and brief plot for disambiguation. Missing or uncertain matches are explicit. Requires a configured TMDB credential."),
+			func(ctx context.Context, _ *mcp.CallToolRequest, input tmdb.Input) (*mcp.CallToolResult, tmdb.Result, error) {
+				output, err := rt.TMDB.Lookup(ctx, input)
 				return nil, output, err
 			})
 	}

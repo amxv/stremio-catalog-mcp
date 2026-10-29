@@ -172,6 +172,10 @@ h1 em { white-space: nowrap; }
 .footer > div { display: flex; flex-wrap: wrap; gap: 22px; }
 .footer > div a { color: #bdc9ba; font-size: 12px; transition: color .2s; }
 .footer > div a:hover { color: var(--lime); }
+.source-credit { display: flex; gap: 12px; align-items: center; padding: 0 clamp(22px, 5vw, 85px) 35px; color: #859588; font: 11px/1.5 var(--sans); }
+.source-credit img { display: block; width: 28px; height: auto; }
+.source-credit > a:last-child { color: #c1d1bb; text-decoration: underline; text-underline-offset: 3px; }
+.source-credit > a:last-child:hover { color: var(--lime); }
 @media (max-width: 1160px) {
   .hero { grid-template-columns: 50% 50%; }
   .hero-copy { padding-top: 95px; }
@@ -204,6 +208,7 @@ h1 em { white-space: nowrap; }
   .statement h2 { font-size: clamp(46px, 7vw, 72px); }
 }
 @media (max-width: 650px) {
+  .source-credit { align-items: flex-start; flex-wrap: wrap; padding-bottom: 29px; }
   .topbar { height: 70px; }
   .brand { font-size: 16px; gap: 9px; }
   .brand-glyph { width: 25px; height: 25px; }
