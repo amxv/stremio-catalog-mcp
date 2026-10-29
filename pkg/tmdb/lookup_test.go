@@ -25,7 +25,46 @@ func (f fakeRating) FetchPreview(_ context.Context, mediaType, id string) (catal
 
 func testClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
-	srv := httptest.NewServer(handler)
+	// Legacy fixtures describe mixed results. Split them into media-specific
+	// responses so that tests exercise the two-index discovery path.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		kind := strings.TrimPrefix(r.URL.Path, "/3/search/")
+		if kind != "movie" && kind != "tv" {
+			handler(w, r)
+			return
+		}
+		clone := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/3/search/multi"
+		clone.URL = &u
+		recorded := httptest.NewRecorder()
+		handler(recorded, clone)
+		for k, values := range recorded.Header() {
+			for _, v := range values {
+				w.Header().Add(k, v)
+			}
+		}
+		if recorded.Code != http.StatusOK {
+			w.WriteHeader(recorded.Code)
+			_, _ = w.Write(recorded.Body.Bytes())
+			return
+		}
+		var data struct {
+			Results []map[string]any `json:"results"`
+		}
+		if err := json.Unmarshal(recorded.Body.Bytes(), &data); err != nil {
+			t.Errorf("invalid fixture search JSON: %v", err)
+			http.Error(w, "bad fixture", http.StatusBadGateway)
+			return
+		}
+		out := make([]map[string]any, 0, len(data.Results))
+		for _, candidate := range data.Results {
+			if candidate["media_type"] == kind {
+				out = append(out, candidate)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": out})
+	}))
 	t.Cleanup(srv.Close)
 	c := New("test-read-token", "")
 	c.BaseURL = srv.URL
@@ -36,6 +75,7 @@ func testClient(t *testing.T, handler http.HandlerFunc) *Client {
 		"tt0903747": "9.5", "tt1392202": "6.2", "tt1632701": "8.4", "tt0000313": "4.8",
 	}}
 	c.ratingSlots = make(chan struct{}, 8)
+	c.cache = newLookupCache()
 	return c
 }
 
@@ -85,6 +125,10 @@ func TestLookupBatchMatchesAndKeepsSmallResults(t *testing.T) {
 			fmt.Fprint(w, body)
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/alternative_titles") {
+			fmt.Fprint(w, `{"titles":[]}`)
+			return
+		}
 		t.Errorf("unexpected request %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
@@ -98,8 +142,8 @@ func TestLookupBatchMatchesAndKeepsSmallResults(t *testing.T) {
 	if maxActive <= 1 {
 		t.Fatalf("expected parallel searches, observed %d concurrent", maxActive)
 	}
-	if searches["Breaking Bad"] != 1 {
-		t.Errorf("duplicate input should share search: %v", searches)
+	if searches["Breaking Bad"] != 2 {
+		t.Errorf("duplicate input should share each movie/TV search: %v", searches)
 	}
 	if len(result.Results) != 5 {
 		t.Fatalf("result count mismatch: %+v", result)
@@ -220,6 +264,8 @@ func TestLookupPreservesGenuineSameNameAmbiguity(t *testing.T) {
 			fmt.Fprint(w, `{"imdb_id":"tt1132620"}`)
 		case "/3/tv/3/external_ids":
 			fmt.Fprint(w, `{"imdb_id":"tt12401288"}`)
+		case "/3/tv/3":
+			fmt.Fprint(w, `{"first_air_date":"2025-01-01","original_language":"en","genres":[{"name":"Drama"}]}`)
 		default:
 			t.Errorf("unexpected TMDB request: %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -235,6 +281,9 @@ func TestLookupPreservesGenuineSameNameAmbiguity(t *testing.T) {
 	}
 	if got.Matches[0].IMDbID != "tt1568346" || got.Matches[1].IMDbID != "tt1132620" || got.Matches[2].IMDbID != "tt12401288" {
 		t.Fatalf("wrong or missing match IDs: %+v", got.Matches)
+	}
+	if got.Matches[2].Year != 2025 || len(got.Matches[2].Genres) != 1 {
+		t.Fatalf("missing series metadata should use details fallback: %+v", got.Matches[2])
 	}
 }
 
@@ -262,29 +311,65 @@ func TestLookupNeverClaimsSingleMatchWhenOtherCandidateFails(t *testing.T) {
 func TestLookupSignalsTruncatedAmbiguity(t *testing.T) {
 	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/3/search/multi" {
-			fmt.Fprint(w, `{"results":[{"media_type":"movie","id":1,"title":"Dune","popularity":10},{"media_type":"movie","id":2,"title":"Dune","popularity":9},{"media_type":"movie","id":3,"title":"Dune","popularity":8},{"media_type":"movie","id":4,"title":"Dune","popularity":7}]}`)
+			var results []map[string]any
+			for i := 1; i <= 7; i++ {
+				results = append(results, map[string]any{
+					"media_type": "movie", "id": i, "title": "Dune", "popularity": 10 - i,
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 			return
 		}
-		var id string
-		switch r.URL.Path {
-		case "/3/movie/1/external_ids":
-			id = "tt11111"
-		case "/3/movie/2/external_ids":
-			id = "tt22222"
-		case "/3/movie/3/external_ids":
-			id = "tt33333"
-		default:
-			t.Errorf("unnecessary fourth candidate fetch: %s", r.URL.Path)
+		var candidate int
+		if _, err := fmt.Sscanf(r.URL.Path, "/3/movie/%d/external_ids", &candidate); err != nil || candidate < 1 || candidate > 7 {
+			t.Errorf("unexpected TMDB candidate fetch: %s", r.URL.Path)
 		}
-		fmt.Fprintf(w, `{"imdb_id":%q}`, id)
+		fmt.Fprintf(w, `{"imdb_id":"tt%05d"}`, candidate)
 	})
 	result, err := c.Lookup(context.Background(), Input{Titles: []string{"Dune"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := result.Results[0]
-	if got.Status != "ambiguous" || !got.MoreMatches || len(got.Matches) != 3 || got.IMDbID != "" {
+	if got.Status != "ambiguous" || !got.MoreMatches || len(got.Matches) != 6 || got.IMDbID != "" {
 		t.Fatalf("truncated matches must not claim certainty: %+v", got)
+	}
+	if got.Matches[0].IMDbID != "tt00001" || got.Matches[5].IMDbID != "tt00006" {
+		t.Fatalf("six best candidates should be returned in ranked order: %+v", got.Matches)
+	}
+}
+
+func TestSixVerifiedMatchesSkipCandidatesWithoutIMDbIDs(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/3/search/multi" {
+			var entries []map[string]any
+			for i := 1; i <= 8; i++ {
+				entries = append(entries, map[string]any{
+					"id": i, "title": "Same Name", "media_type": "movie", "popularity": 20 - i,
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": entries})
+			return
+		}
+		var id int
+		if _, err := fmt.Sscanf(r.URL.Path, "/3/movie/%d/external_ids", &id); err != nil {
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			return
+		}
+		if id < 3 {
+			fmt.Fprint(w, `{"imdb_id":null}`)
+		} else {
+			fmt.Fprintf(w, `{"imdb_id":"tt%05d"}`, id)
+		}
+	})
+	result, err := c.Lookup(context.Background(), Input{Titles: []string{"Same Name"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.Results[0]
+	if got.Status != "ambiguous" || len(got.Matches) != 6 || got.MoreMatches ||
+		got.Matches[0].IMDbID != "tt00003" || got.Matches[5].IMDbID != "tt00008" {
+		t.Fatalf("six slots should contain six verified IDs: %+v", got)
 	}
 }
 
@@ -298,6 +383,10 @@ func TestLookupRateLimitRetryAndSecretSafety(t *testing.T) {
 		}
 		if r.URL.Path == "/3/search/multi" {
 			fmt.Fprint(w, `{"results":[{"media_type":"tv","id":1,"name":"Example"}]}`)
+			return
+		}
+		if r.URL.Path == "/3/tv/1" {
+			fmt.Fprint(w, `{"first_air_date":"2000-01-01"}`)
 			return
 		}
 		mu.Lock()
@@ -319,6 +408,7 @@ func TestLookupRateLimitRetryAndSecretSafety(t *testing.T) {
 	}
 
 	c.HTTPClient = &http.Client{Transport: brokenTransport{}}
+	c.cache = newLookupCache()
 	failed, err := c.Lookup(context.Background(), Input{Titles: []string{"Example"}})
 	if err != nil {
 		t.Fatal(err)

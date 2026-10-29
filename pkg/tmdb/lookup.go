@@ -10,12 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/amxv/stremio-catalog-mcp/pkg/catalog"
@@ -24,7 +22,8 @@ import (
 
 const (
 	maxTitles      = 50
-	maxMatches     = 3
+	maxMatches     = 6
+	maxCandidates  = 12
 	maxDescription = 180
 )
 
@@ -32,10 +31,10 @@ const (
 // approximate 40 requests/second ceiling. A separate deployment instance can
 // have its own limiter, so 429 responses must still be respected.
 var (
-	sharedLimiter      = rate.NewLimiter(18, 8)
-	sharedSlots        = make(chan struct{}, 8)
+	sharedLimiter      = rate.NewLimiter(27, 10)
+	sharedSlots        = make(chan struct{}, 12)
 	sharedClient       = &http.Client{Timeout: 5 * time.Second}
-	sharedRatingSlots  = make(chan struct{}, 8)
+	sharedRatingSlots  = make(chan struct{}, 12)
 	sharedRatingClient = &http.Client{Timeout: 1500 * time.Millisecond}
 )
 
@@ -50,6 +49,7 @@ type Client struct {
 	slots          chan struct{}
 	ratingResolver catalog.PreviewResolver
 	ratingSlots    chan struct{}
+	cache          *lookupCache
 }
 
 func New(readToken, apiKey string) *Client {
@@ -63,6 +63,7 @@ func New(readToken, apiKey string) *Client {
 		limiter: sharedLimiter, slots: sharedSlots,
 		ratingResolver: catalog.Cinemeta{Client: sharedRatingClient},
 		ratingSlots:    sharedRatingSlots,
+		cache:          sharedLookupCache,
 	}
 }
 
@@ -89,10 +90,11 @@ type Match struct {
 type Item struct {
 	Query string `json:"query"`
 	Match
-	Matches     []Match `json:"matches,omitempty"`
-	MoreMatches bool    `json:"more_matches,omitempty"`
-	Status      string  `json:"status,omitempty"`
-	Error       string  `json:"error,omitempty"`
+	Matches     []Match      `json:"matches,omitempty"`
+	Suggestions []Suggestion `json:"suggestions,omitempty"`
+	MoreMatches bool         `json:"more_matches,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	Error       string       `json:"error,omitempty"`
 }
 
 type Result struct {
@@ -100,18 +102,20 @@ type Result struct {
 }
 
 type searchHit struct {
-	ID               int64   `json:"id"`
-	MediaType        string  `json:"media_type"`
-	Title            string  `json:"title"`
-	OriginalTitle    string  `json:"original_title"`
-	Name             string  `json:"name"`
-	OriginalName     string  `json:"original_name"`
-	ReleaseDate      string  `json:"release_date"`
-	FirstAirDate     string  `json:"first_air_date"`
-	Overview         string  `json:"overview"`
-	Popularity       float64 `json:"popularity"`
-	OriginalLanguage string  `json:"original_language"`
-	GenreIDs         []int   `json:"genre_ids"`
+	ID               int64    `json:"id"`
+	MediaType        string   `json:"media_type"`
+	Title            string   `json:"title"`
+	OriginalTitle    string   `json:"original_title"`
+	Name             string   `json:"name"`
+	OriginalName     string   `json:"original_name"`
+	ReleaseDate      string   `json:"release_date"`
+	FirstAirDate     string   `json:"first_air_date"`
+	Overview         string   `json:"overview"`
+	Popularity       float64  `json:"popularity"`
+	VoteCount        int      `json:"vote_count"`
+	OriginCountry    []string `json:"origin_country"`
+	OriginalLanguage string   `json:"original_language"`
+	GenreIDs         []int    `json:"genre_ids"`
 }
 
 func (h searchHit) displayTitle() string {
@@ -126,6 +130,13 @@ func (h searchHit) date() string {
 		return h.FirstAirDate
 	}
 	return h.ReleaseDate
+}
+
+func (h searchHit) originalTitle() string {
+	if h.MediaType == "tv" {
+		return h.OriginalName
+	}
+	return h.OriginalTitle
 }
 
 // Lookup performs independent queries concurrently, then resolves the IMDb
@@ -173,55 +184,36 @@ func (c *Client) Lookup(ctx context.Context, input Input) (Result, error) {
 }
 
 func (c *Client) lookupOne(ctx context.Context, query string) Item {
-	item := Item{Query: query}
-	params := url.Values{"query": {query}, "include_adult": {"false"}, "language": {"en-US"}}
-	var response struct {
-		Results []searchHit `json:"results"`
+	spec := parseTitleQuery(query)
+	if c.cache != nil {
+		return c.cache.lookup(ctx, spec, query, func() Item {
+			return c.resolveOne(ctx, query, spec)
+		})
 	}
-	if err := c.get(ctx, "/3/search/multi", params, &response); err != nil {
+	return c.resolveOne(ctx, query, spec)
+}
+
+func (c *Client) resolveOne(ctx context.Context, query string, spec titleQuery) Item {
+	item := Item{Query: query}
+	hits, err := c.searchBoth(ctx, spec)
+	if err != nil {
 		item.Status, item.Error = "error", safeError(err)
 		return item
 	}
-
-	key := normalize(query)
-	var exact, originalTitle []searchHit
-	seen := make(map[string]bool)
-	for _, hit := range response.Results {
-		if (hit.MediaType != "movie" && hit.MediaType != "tv") || hit.ID <= 0 {
-			continue
-		}
-		displayMatch := normalize(hit.displayTitle()) == key
-		if !displayMatch && normalize(hit.OriginalTitle) != key && normalize(hit.OriginalName) != key {
-			continue
-		}
-		unique := hit.MediaType + ":" + strconv.FormatInt(hit.ID, 10)
-		if seen[unique] {
-			continue
-		}
-		seen[unique] = true
-		if displayMatch {
-			exact = append(exact, hit)
-		} else {
-			originalTitle = append(originalTitle, hit)
-		}
-	}
-	// Prefer titles shown to users. Alternate/original titles are useful for
-	// translated releases, but should not create false ambiguity when an
-	// exact displayed-title match exists (e.g. The Dark Knight).
-	candidates := exact
+	candidates := selectCandidates(hits, spec)
 	if len(candidates) == 0 {
-		candidates = originalTitle
+		candidates = c.resolveAlternativeTitles(ctx, hits, spec)
 	}
 	if len(candidates) == 0 {
 		item.Status = "not_found"
+		item.Suggestions = titleSuggestions(hits, spec)
 		return item
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].Popularity > candidates[j].Popularity
-	})
-	item.MoreMatches = len(candidates) > maxMatches
-	if len(candidates) > maxMatches {
-		candidates = candidates[:maxMatches]
+	// Rank before limiting, and inspect more candidates than the six
+	// results displayed. Missing IMDb IDs must not consume a result slot.
+	item.MoreMatches = len(candidates) > maxCandidates
+	if len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
 	}
 
 	matches := make([]Match, len(candidates))
@@ -253,22 +245,44 @@ func (c *Client) lookupOne(ctx context.Context, query string) Item {
 				Genres:      genres(candidate.MediaType, candidate.GenreIDs),
 				Description: shorten(candidate.Overview),
 			}
-			matches[i].IMDbRating = c.imdbRating(ctx, mediaType, ids.IMDbID)
 		}(i, candidate)
 	}
 	wg.Wait()
+	seenIDs := make(map[string]bool)
+	byIMDbID := make(map[string]searchHit, len(candidates))
 	for i, match := range matches {
 		if failed[i] {
 			item.Status, item.Error = "error", "could not verify all TMDB matches; retry this title"
 			return item
 		}
-		if match.IMDbID != "" {
+		if match.IMDbID != "" && !seenIDs[match.IMDbID] {
+			seenIDs[match.IMDbID] = true
+			byIMDbID[match.IMDbID] = candidates[i]
 			item.Matches = append(item.Matches, match)
 		}
 	}
+	if len(item.Matches) > maxMatches {
+		item.MoreMatches = true
+		item.Matches = item.Matches[:maxMatches]
+	}
+	// Ratings and metadata are best-effort. Do these requests only for the
+	// final results; discarded candidates should not cost Cinemeta calls.
+	var enrich sync.WaitGroup
+	for i := range item.Matches {
+		enrich.Add(1)
+		go func(i int) {
+			defer enrich.Done()
+			c.enrichFromCinemeta(ctx, &item.Matches[i])
+			if item.Matches[i].Year == 0 && item.Matches[i].MediaType == "series" {
+				c.enrichMissingTVYear(ctx, byIMDbID[item.Matches[i].IMDbID], &item.Matches[i])
+			}
+		}(i)
+	}
+	enrich.Wait()
 	if len(item.Matches) == 0 {
 		item.Status = "not_found" // TMDB titles may lack IMDb IDs.
-	} else if len(item.Matches) == 1 {
+		item.Suggestions = titleSuggestions(hits, spec)
+	} else if len(item.Matches) == 1 && !item.MoreMatches {
 		// Some TMDB entries lack IMDb IDs. They are not competing IMDb matches.
 		item.Match = item.Matches[0]
 		// A unique match needs only a release year, not a detailed synopsis/date.
@@ -281,29 +295,74 @@ func (c *Client) lookupOne(ctx context.Context, query string) Item {
 	return item
 }
 
+// A small number of TV results have no first-air date in TMDB's search
+// response or Cinemeta. Only those entries trigger a TMDB details request.
+func (c *Client) enrichMissingTVYear(ctx context.Context, candidate searchHit, match *Match) {
+	if candidate.ID <= 0 {
+		return
+	}
+	var details struct {
+		FirstAirDate     string `json:"first_air_date"`
+		OriginalLanguage string `json:"original_language"`
+		Overview         string `json:"overview"`
+		Genres           []struct {
+			Name string `json:"name"`
+		} `json:"genres"`
+	}
+	if err := c.get(ctx, fmt.Sprintf("/3/tv/%d", candidate.ID), nil, &details); err != nil {
+		return
+	}
+	match.Year = releaseYear(details.FirstAirDate)
+	if match.ReleaseDate == "" {
+		match.ReleaseDate = details.FirstAirDate
+	}
+	if match.Language == "" {
+		match.Language = details.OriginalLanguage
+	}
+	if match.Description == "" {
+		match.Description = shorten(details.Overview)
+	}
+	if len(match.Genres) == 0 {
+		for _, genre := range details.Genres {
+			if genre.Name != "" && len(match.Genres) < 4 {
+				match.Genres = append(match.Genres, genre.Name)
+			}
+		}
+	}
+}
+
 // Cinemeta is already used for IMDb ratings elsewhere in this repository.
 // Ratings are best-effort and never prevent an otherwise verified IMDb ID.
-func (c *Client) imdbRating(ctx context.Context, mediaType, imdbID string) float64 {
+func (c *Client) enrichFromCinemeta(ctx context.Context, match *Match) {
 	if c.ratingResolver == nil {
-		return 0
+		return
 	}
 	select {
 	case c.ratingSlots <- struct{}{}:
 	case <-ctx.Done():
-		return 0
+		return
 	}
 	defer func() { <-c.ratingSlots }()
 	ratingCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
-	preview, err := c.ratingResolver.FetchPreview(ratingCtx, mediaType, imdbID)
+	preview, err := c.ratingResolver.FetchPreview(ratingCtx, match.MediaType, match.IMDbID)
 	if err != nil {
-		return 0
+		return
+	}
+	if match.Year == 0 {
+		match.Year = releaseYear(preview.ReleaseInfo)
+	}
+	if len(match.Genres) == 0 {
+		for _, link := range preview.Links {
+			if link.Category == "Genres" && link.Name != "" && len(match.Genres) < 4 {
+				match.Genres = append(match.Genres, link.Name)
+			}
+		}
 	}
 	rating, err := strconv.ParseFloat(preview.IMDBRating, 64)
-	if err != nil || rating <= 0 || rating > 10 {
-		return 0
+	if err == nil && rating > 0 && rating <= 10 {
+		match.IMDbRating = rating
 	}
-	return rating
 }
 
 func releaseYear(date string) int {
@@ -327,16 +386,6 @@ func validIMDbID(id string) bool {
 		}
 	}
 	return true
-}
-
-func normalize(s string) string {
-	var b strings.Builder
-	for _, ch := range strings.ToLower(s) {
-		if unicode.IsLetter(ch) || unicode.IsDigit(ch) {
-			b.WriteRune(ch)
-		}
-	}
-	return b.String()
 }
 
 func shorten(s string) string {

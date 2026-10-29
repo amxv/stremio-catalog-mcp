@@ -93,7 +93,9 @@ Use this when a user names a movie or show and the agent needs its exact IMDb ID
 }
 ```
 
-One clear match returns a **flat result** with the IMDb ID, name, type, year, original language, genres, and available IMDb rating. Competing exact-name titles return up to three candidates with release dates and short descriptions, so the agent can choose or ask the user. The response preserves input order; failures are reported per title rather than guessed. If more than three exact candidates were found, the result indicates that it is truncated.
+One clear match returns a **flat result** with the IMDb ID, name, type, year, original language, genres, and available IMDb rating. Competing exact-name titles return **up to six ranked candidates** with release dates and short descriptions, so the agent can choose or ask the user. The response preserves input order; failures are reported per title rather than guessed. `more_matches: true` signals that additional candidates may exist beyond the six returned.
+
+You can disambiguate titles using a year or qualifier, for example `Dune (2021)`, `The Office (US)`, `Oldboy (2003)`, or `12 Monkeys (series)`. Matching ignores accents and common punctuation differences, including `Amelie` versus `Amélie`. Shortened and translated names are considered when applicable, but misspellings are **not** silently corrected. When no exact match is found, optional `suggestions` are explicitly unverified alternatives.
 
 Languages use ISO codes such as `en`. Genres come from TMDB. **IMDb ratings come from Cinemeta** when available; TMDB's different vote score is never substituted. The rating field is omitted if it can't be verified. Descriptions and exact dates are omitted for an unambiguous title to save tokens.
 

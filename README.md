@@ -9,7 +9,7 @@ Manage [Stremio](https://www.stremio.com/) with ChatGPT or any MCP-capable agent
 - **Custom catalogs:** Create, edit, reorder, and remove collections of movies or shows, complete with posters.
 - **Home layout:** Hide unwanted rows and reorder catalogs or installed add-ons without uninstalling streaming providers.
 - **Watch history:** Check up to 50 IMDb IDs at once, see watched episodes without spoilers, or mark movies and episodes watched or unwatched.
-- **Title lookup (optional):** Resolve up to 50 movie and TV names to IMDb IDs using TMDB. Results include year, language, genres, and IMDb ratings when available, with extra detail for ambiguous titles.
+- **Title lookup (optional):** Resolve up to 50 movie and TV names to IMDb IDs using TMDB. Results include year, language, genres, and IMDb ratings when available, with up to six ranked matches for ambiguous titles.
 - **Android TV remote (optional):** Open a movie, show, or specific episode in Stremio on your paired TV, without autoplay.
 
 Your agent handles discovery and recommendations. This server handles Stremio. **It doesn't provide streams or replace your installed add-ons.**

@@ -72,7 +72,7 @@ Each deployment currently serves **one Stremio account**. For multiple people, d
 
 ### Optional TMDB lookup performance
 
-Title queries run concurrently, as do IMDb external-ID lookups for possible matches. Within each warm Go instance, TMDB requests are limited to eight concurrent calls with an 18-request-per-second token bucket, leaving headroom below TMDB's [approximate 40 requests/second ceiling](https://developer.themoviedb.org/docs/rate-limiting). HTTP 429 and transient server errors trigger bounded retries (respecting `Retry-After`). Multiple Vercel instances do not share the in-memory limiter, so a provider 429 can still occur; a failed title is reported explicitly instead of guessing an IMDb ID. Optional Cinemeta ratings are fetched independently with short timeouts and never block a verified ID indefinitely.
+Movie and TV title searches run concurrently, as do IMDb external-ID lookups for relevant matches. Within each warm Go instance, TMDB requests are limited to 12 concurrent calls and a conservative 27-request-per-second token bucket, below TMDB's [approximate 40 requests/second ceiling](https://developer.themoviedb.org/docs/rate-limiting). Repeated lookups use an in-memory 15-minute cache and overlapping requests share work. HTTP 429 and transient server errors trigger bounded retries (respecting `Retry-After`). Multiple Vercel instances do not share the limiter, so a provider 429 can still occur; a failed title is reported explicitly instead of guessing an IMDb ID. Only the **top six verified IMDb matches** are enriched with Cinemeta metadata, independently and with short timeouts.
 
 ## Code map and upstream references
 

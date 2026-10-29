@@ -103,7 +103,7 @@ func catalogTool(name, description string) *mcp.Tool {
 }
 
 func serverFor(rt Runtime) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.8.1"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "stremio-catalog-mcp", Version: "0.9.0"}, nil)
 
 	mcp.AddTool(s, catalogTool("catalogs_get", "Read custom catalog rows. Default: compact summaries. row_id returns one row's ordered titles/posters; include_titles reads all titles; include_install_url returns the private add-on URL only when requested. Use home_layout_get for other add-ons' rows."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input CatalogsGetInput) (*mcp.CallToolResult, CatalogsGetResult, error) {
@@ -142,7 +142,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			})
 	}
 	if rt.TMDB != nil {
-		mcp.AddTool(s, catalogTool("title_lookup", "Resolve 1-50 movie or TV title names to IMDb IDs in one batch. Returns title, year, language, genres and IMDb rating when available; same-name matches also include media type, date and brief plot for disambiguation. Missing or uncertain matches are explicit. Requires a configured TMDB credential."),
+		mcp.AddTool(s, catalogTool("title_lookup", "Find IMDb IDs for a batch of 1-50 movie or TV names, optionally ending in (YYYY), (US), (UK), (movie), (series) or (anime). Returns title, year, language, genres and IMDb rating when available. Genuine same-title collisions return up to six ranked matches, with dates and brief plots. No typo correction. Requires TMDB credentials."),
 			func(ctx context.Context, _ *mcp.CallToolRequest, input tmdb.Input) (*mcp.CallToolResult, tmdb.Result, error) {
 				output, err := rt.TMDB.Lookup(ctx, input)
 				return nil, output, err
