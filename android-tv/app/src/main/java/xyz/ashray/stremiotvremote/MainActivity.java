@@ -118,7 +118,7 @@ public final class MainActivity extends Activity {
         });
         root.addView(label(
                 "After pairing, say 'Open Inception on my TV' in ChatGPT. " +
-                "For revocation, remove this device using the tv_devices MCP tool.",
+                "To revoke or replace this TV, open /tv/setup on your MCP server.",
                 13, Color.LTGRAY));
         setContentView(scroll);
         pair.requestFocus();

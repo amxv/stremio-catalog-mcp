@@ -104,7 +104,7 @@ func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 	}{
 		{"", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history"}},
 		{"FALSE", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history"}},
-		{"true", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history", "tv_pair", "tv_devices", "tv_open_title"}},
+		{"true", []string{"catalogs_get", "catalogs_update", "home_layout_get", "home_layout_update", "watch_history", "tv_open_title"}},
 	} {
 		t.Run("flag_"+tc.enabled, func(t *testing.T) {
 			t.Setenv("TV_OPEN_ENABLED", tc.enabled)
@@ -145,18 +145,17 @@ func TestOptionalTVToolsRequireExplicitFlag(t *testing.T) {
 					t.Errorf("%s sets open-world hint", tool.Name)
 				}
 				if strings.HasPrefix(tool.Name, "tv_") {
-					var required []string
-					switch tool.Name {
-					case "tv_pair":
-						required = []string{"code"}
-					case "tv_devices":
-						required = []string{"action", "device_id"}
-					case "tv_open_title":
-						required = []string{"media_type", "imdb_id", "device_id"}
+					if tool.Name != "tv_open_title" {
+						t.Errorf("unexpected TV MCP tool %s", tool.Name)
 					}
-					for _, key := range required {
+					for _, key := range []string{"media_type", "imdb_id"} {
 						if len(tool.InputSchema.Properties[key]) == 0 {
 							t.Errorf("%s missing %s", tool.Name, key)
+						}
+					}
+					for _, key := range []string{"device_id", "code", "action", "name", "setup_key"} {
+						if _, found := tool.InputSchema.Properties[key]; found {
+							t.Errorf("%s must not expose administrative field %s", tool.Name, key)
 						}
 					}
 				}

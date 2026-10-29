@@ -136,14 +136,26 @@ func (s RedisStore) Approve(ctx context.Context, code string, pending PairPendin
 		return false, err
 	}
 	const script = `if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+if redis.call('SCARD', KEYS[3]) ~= 0 then return -1 end
 redis.call('DEL', KEYS[1])
 redis.call('SET', KEYS[2], ARGV[2])
 redis.call('SADD', KEYS[3], ARGV[3])
 redis.call('SET', KEYS[4], ARGV[4], 'EX', 600)
 return 1`
-	return numberResult(s.call(ctx, "EVAL", script, 4,
+	result, err := s.call(ctx, "EVAL", script, 4,
 		s.key("pair:"+code), s.key("device:"+device.ID), s.key("devices"), s.key("status:"+pending.SessionHash),
-		string(original), string(encodedDevice), device.ID, string(encodedReceipt)))
+		string(original), string(encodedDevice), device.ID, string(encodedReceipt))
+	if err != nil {
+		return false, err
+	}
+	var n int
+	if err := json.Unmarshal(result, &n); err != nil {
+		return false, err
+	}
+	if n == -1 {
+		return false, ErrAlreadyPaired
+	}
+	return n == 1, nil
 }
 
 func (s RedisStore) Get(ctx context.Context, id string) (Device, error) {

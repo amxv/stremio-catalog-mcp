@@ -3,12 +3,12 @@ title: Android TV remote (optional)
 description: Open a title's Stremio detail page from ChatGPT using a tiny Android TV receiver and free Firebase Cloud Messaging.
 order: 4
 category: Guides
-summary: Programmatic Firebase provisioning, three opt-in MCP tools, TV pairing, ADB sideloading, and background-launch troubleshooting.
+summary: One optional MCP tool, private browser-based single-TV pairing, Firebase provisioning, ADB sideloading, and troubleshooting.
 ---
 
 This **opt-in, experimental** feature opens a movie or series details page in **Stremio for Android TV**, without automatically starting playback. Use it to say "Open Inception on my TV" from ChatGPT on your phone. You do **not** need a running laptop, home server, ADB connection, or a TV polling loop after installation.
 
-**Nothing changes for existing users.** With `TV_OPEN_ENABLED` unset or anything other than the literal `true`, the MCP still exposes exactly its original five tools. No companion APK or Firebase project is required. The three TV tools and their public pairing endpoints are absent.
+**Nothing changes for existing users.** With `TV_OPEN_ENABLED` unset or anything other than the literal `true`, the MCP still exposes exactly its original five tools. No companion APK or Firebase project is required. The single `tv_open_title` MCP tool, private setup page, and TV pairing endpoints are absent.
 
 ## How it works
 
@@ -106,6 +106,7 @@ Set these **production server-side** environment variables on the **Go API proje
 | `TV_OPEN_ENABLED` | `true` (exact literal; default is disabled) |
 | `FCM_PROJECT_ID` | Your Firebase project ID |
 | `FCM_SERVICE_ACCOUNT_JSON` | The **complete service-account JSON**, stored as a Vercel **Secret** |
+| `TV_SETUP_KEY` | Separate random secret (at least 32 characters) protecting the private TV setup web page |
 
 Example with Vercel CLI (run from the repository root, with the correct Vercel project linked):
 
@@ -114,11 +115,19 @@ printf 'true' | vercel env add TV_OPEN_ENABLED production
 printf '%s' "$FCM_PROJECT_ID" | vercel env add FCM_PROJECT_ID production
 vercel env add FCM_SERVICE_ACCOUNT_JSON production --type secret \
   < "$HOME/.config/stremio-tv-fcm/service-account.json"
+
+# Create a separate private web-setup credential, not the MCP key.
+umask 077
+mkdir -p "$HOME/.config/stremio-tv-fcm"
+python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")' \
+  > "$HOME/.config/stremio-tv-fcm/tv-setup-key"
+vercel env add TV_SETUP_KEY production --type secret \
+  < "$HOME/.config/stremio-tv-fcm/tv-setup-key"
 ```
 
 Deploy the Go branch **only when you're ready to enable the feature**. A redeployment is required after changing Vercel environment variables. In installations that don't enable it, no new MCP tools appear. The existing Upstash database is reused with **separate `:tv:` namespaced keys**, not modified catalog documents.
 
-If using a locally managed process instead of Vercel, export those same three environment variables and your existing Redis configuration. Do not put service account JSON into `PUBLIC_BASE_URL`, the TV app, or your Stremio add-on manifest.
+If using a locally managed process instead of Vercel, export those same four environment variables and your existing Redis configuration. Do not put service account JSON into `PUBLIC_BASE_URL`, the TV app, or your Stremio add-on manifest.
 
 ## 3. Build and sideload the Android TV companion
 
@@ -158,7 +167,15 @@ adb shell am start -n xyz.ashray.stremiotvremote/.MainActivity \
 
 Use **only your public HTTPS origin**, never `/mcp?key=...` and never the private `STREMIO_FEED_TOKEN`. The app needs none of the MCP secrets. The TV displays an eight-digit code after obtaining an FCM registration token.
 
-From ChatGPT using your connected MCP, say **"Pair my Android TV with code 12345678"** (use the actual TV code). The optional `tv_pair` tool approves it. The foreground app checks its pairing status every four seconds and securely stores a per-device credential. The code expires after ten minutes. After pairing, return to Stremio.
+On your **phone or laptop**, open `https://your-mcp.example.com/tv/setup` and enter the separate `TV_SETUP_KEY` created above. The page only holds this key in the current tab's memory and sends it to your same-origin server in an authorization header; it is **never included in the page URL**. On macOS, you can copy the key without printing it with:
+
+```bash
+pbcopy < "$HOME/.config/stremio-tv-fcm/tv-setup-key"
+```
+
+Enter the actual eight-digit code displayed by the companion app on your TV, then select **Pair this TV**. The foreground app checks its pairing status every four seconds and securely stores a per-device credential. The code expires after ten minutes. After pairing, return to Stremio.
+
+You may pair **one TV only**. To replace it, use **Revoke pairing** on the same private setup page, then reset local pairing inside the TV app and pair again. Existing versions of this MCP that already paired multiple devices can revoke their legacy entries from the setup page before using `tv_open_title`.
 
 ### Allow one-step background navigation
 
@@ -178,13 +195,7 @@ After successful setup, disconnect ADB and close the pairing UI. There is **no n
 
 ## 4. Use ChatGPT
 
-With `TV_OPEN_ENABLED=true`, three new tools appear:
-
-| Tool | Usage |
-| --- | --- |
-| `tv_pair` | Approve the TV's eight-digit code. |
-| `tv_devices` | List paired TVs, or explicitly remove one with `action=remove` and `device_id`. |
-| `tv_open_title` | Send `media_type` (`movie` or `series`) and `imdb_id` (`tt...`). For one paired TV, `device_id` is optional. |
+With `TV_OPEN_ENABLED=true`, there is **exactly one additional MCP tool**, `tv_open_title`. It accepts `media_type` (`movie` or `series`) and an IMDb ID (`imdb_id`, `tt...`). There is no device selection, pairing, or device-management surface in MCP. With the TV feature disabled, the original five tools remain unchanged.
 
 For example, the MCP input:
 
@@ -194,13 +205,14 @@ For example, the MCP input:
 
 asks the TV to open `stremio:///detail/movie/tt1375666/tt1375666`. For a series, the episode/video ID is left empty to open the show's main detail page; no autoplay flag is set. Cinemeta and installed Stremio add-ons remain responsible for descriptions, IMDb ratings, trailers, episodes, and playback sources.
 
-**Important:** The server returns `accepted_by_fcm` only after Google accepts the push. This is **not proof the TV received it or that Stremio opened successfully**. The TV must be on and connected, and zero-TTL commands intentionally won't be queued for offline delivery. If multiple TVs are paired, choose one of the `tv_devices` IDs.
+**Important:** The server returns `accepted_by_fcm` only after Google accepts the push. This is **not proof the TV received it or that Stremio opened successfully**. The TV must be on and connected, and zero-TTL commands intentionally won't be queued for offline delivery. A single paired TV is selected automatically.
 
-To revoke a companion, ask the MCP to remove that device and reset local pairing inside its Android app. Uninstalling the app may eventually invalidate its FCM token but **does not** instantly delete the private paired-device record in Redis.
+To revoke a companion, use the private `/tv/setup` page, then reset local pairing inside its Android app. Uninstalling the app may eventually invalidate its FCM token but **does not** instantly delete the private paired-device record in Redis.
 
 ## Security and troubleshooting
 
-- **No MCP key on TV:** Only `tv_pair` on the authenticated MCP can approve a TV. Public pairing endpoints cannot send commands, read device lists, or invoke Stremio. Device records and FCM tokens are private to your Redis instance.
+- **No MCP key on TV:** A separate `TV_SETUP_KEY` authenticates browser-based pairing and revocation. The public pairing endpoints cannot approve devices, read paired-device lists, or invoke Stremio. Only the authenticated MCP can send an open-title command. Device records and FCM tokens remain private in Redis. The `/tv/admin` endpoint requires a bearer key (not a query-string token) and disallows cross-origin requests.
+- **Single-TV enforcement:** Redis atomically refuses approval of a second paired device, even if two codes are approved concurrently.
 - **Short-lived pairing:** Codes are eight digits, single-use, ten-minute expiry. The TV receives a separate 256-bit session credential to poll approval, then a distinct per-device secret for token refresh. Pair creation is per-address and globally rate-limited.
 - **Narrow actions:** Push payloads contain only canonical IMDb IDs, `movie`/`series`, a command ID, and an issue time. No arbitrary URLs, autoplay, shell commands, streams, or app-control RPCs. The receiver rejects invalid/stale commands.
 - **FCM errors:** `401/403` from Google's HTTP v1 API usually indicates a wrong service account, project or IAM role. An unregistered device token means the APK should be reopened/re-paired. Ensure Cloud Messaging API is enabled.

@@ -10,14 +10,13 @@ import (
 	"math/big"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/amxv/stremio-catalog-mcp/pkg/catalog"
 )
 
-const maxDevices = 8
+const maxDevices = 1
 
 var (
 	pairCodePattern = regexp.MustCompile(`^[0-9]{8}$`)
@@ -30,9 +29,10 @@ type Sender interface {
 }
 
 type Service struct {
-	Store  Storage
-	Sender Sender
-	Now    func() time.Time
+	Store    Storage
+	Sender   Sender
+	Now      func() time.Time
+	SetupKey string
 }
 
 func FromEnv(redis *catalog.RedisStore) *Service {
@@ -41,7 +41,8 @@ func FromEnv(redis *catalog.RedisStore) *Service {
 		return nil
 	}
 	return &Service{
-		Store: RedisStore{Redis: redis},
+		Store:    RedisStore{Redis: redis},
+		SetupKey: os.Getenv("TV_SETUP_KEY"),
 		Sender: &FCMSender{
 			ProjectID:          os.Getenv("FCM_PROJECT_ID"),
 			ServiceAccountJSON: os.Getenv("FCM_SERVICE_ACCOUNT_JSON"),
@@ -95,7 +96,7 @@ func validFCMToken(token string) bool {
 }
 
 type PairInput struct {
-	Code string `json:"code" jsonschema:"Eight-digit code displayed in the companion app on the TV"`
+	Code string `json:"code"`
 }
 type PairResult struct {
 	Paired     bool   `json:"paired"`
@@ -162,7 +163,7 @@ func (s *Service) ApprovePair(ctx context.Context, input PairInput) (PairResult,
 		return PairResult{}, err
 	}
 	if !pairCodePattern.MatchString(input.Code) {
-		return PairResult{}, errors.New("pairing code must be eight digits")
+		return PairResult{}, fmt.Errorf("%w: pairing code must be eight digits", ErrInvalidInput)
 	}
 	pending, err := s.Store.Pending(ctx, input.Code)
 	if err != nil {
@@ -173,7 +174,7 @@ func (s *Service) ApprovePair(ctx context.Context, input PairInput) (PairResult,
 		return PairResult{}, err
 	}
 	if len(devices) >= maxDevices {
-		return PairResult{}, fmt.Errorf("maximum of %d paired TVs; remove one first", maxDevices)
+		return PairResult{}, ErrAlreadyPaired
 	}
 	id, err := deviceID()
 	if err != nil {
@@ -200,54 +201,40 @@ type DeviceSummary struct {
 	Name     string `json:"name"`
 	PairedAt string `json:"paired_at"`
 }
-type DevicesInput struct {
-	Action   string `json:"action,omitempty" jsonschema:"list (default) or remove"`
-	DeviceID string `json:"device_id,omitempty" jsonschema:"Paired TV ID required for removal"`
-}
-type DevicesResult struct {
-	Devices []DeviceSummary `json:"devices"`
-	Removed bool            `json:"removed,omitempty"`
-}
 
-func (s *Service) Devices(ctx context.Context, input DevicesInput) (DevicesResult, error) {
+// ListDevices is an administrative operation exposed exclusively through
+// /tv/admin, never through the MCP tools/list surface.
+func (s *Service) ListDevices(ctx context.Context) ([]DeviceSummary, error) {
 	if err := s.ready(); err != nil {
-		return DevicesResult{}, err
-	}
-	result := DevicesResult{Devices: []DeviceSummary{}}
-	switch input.Action {
-	case "", "list":
-		if input.DeviceID != "" {
-			return result, errors.New("device_id is only valid for remove")
-		}
-	case "remove":
-		if !deviceIDPattern.MatchString(input.DeviceID) {
-			return result, errors.New("invalid device_id")
-		}
-		if _, err := s.Store.Get(ctx, input.DeviceID); err != nil {
-			return result, err
-		}
-		if err := s.Store.Remove(ctx, input.DeviceID); err != nil {
-			return result, err
-		}
-		result.Removed = true
-	default:
-		return result, errors.New("action must be list or remove")
+		return nil, err
 	}
 	list, err := s.Store.List(ctx)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	result := make([]DeviceSummary, 0, len(list))
 	for _, d := range list {
-		result.Devices = append(result.Devices, DeviceSummary{DeviceID: d.ID, Name: d.Name, PairedAt: d.PairedAt})
+		result = append(result, DeviceSummary{DeviceID: d.ID, Name: d.Name, PairedAt: d.PairedAt})
 	}
 	return result, nil
+}
+
+func (s *Service) RevokeDevice(ctx context.Context, id string) error {
+	if err := s.ready(); err != nil {
+		return err
+	}
+	if !deviceIDPattern.MatchString(id) {
+		return ErrInvalidInput
+	}
+	if _, err := s.Store.Get(ctx, id); err != nil {
+		return err
+	}
+	return s.Store.Remove(ctx, id)
 }
 
 type OpenInput struct {
 	MediaType string `json:"media_type" jsonschema:"movie or series"`
 	IMDbID    string `json:"imdb_id" jsonschema:"Canonical IMDb tt... ID; do not pass a title"`
-	DeviceID  string `json:"device_id,omitempty" jsonschema:"Paired TV ID; omit if only one TV is paired"`
 }
 type OpenPayload struct {
 	MediaType string
@@ -257,7 +244,6 @@ type OpenPayload struct {
 }
 type OpenResult struct {
 	Status     string `json:"status"`
-	DeviceID   string `json:"device_id"`
 	DeviceName string `json:"device_name"`
 	IMDbID     string `json:"imdb_id"`
 	MediaType  string `json:"media_type"`
@@ -289,28 +275,12 @@ func (s *Service) OpenTitle(ctx context.Context, input OpenInput) (OpenResult, e
 		return OpenResult{}, err
 	}
 	if len(list) == 0 {
-		return OpenResult{}, errors.New("no paired Android TVs; open the companion app to pair one")
+		return OpenResult{}, errors.New("no paired Android TV; open /tv/setup to pair the companion app first")
 	}
-	var selected *Device
-	if input.DeviceID == "" {
-		if len(list) != 1 {
-			return OpenResult{}, errors.New("multiple TVs paired; specify device_id from tv_devices")
-		}
-		selected = &list[0]
-	} else {
-		if !deviceIDPattern.MatchString(input.DeviceID) {
-			return OpenResult{}, errors.New("invalid device_id")
-		}
-		for i := range list {
-			if list[i].ID == input.DeviceID {
-				selected = &list[i]
-				break
-			}
-		}
-		if selected == nil {
-			return OpenResult{}, errors.New("device_id not paired")
-		}
+	if len(list) != maxDevices {
+		return OpenResult{}, errors.New("multiple legacy TV pairings detected; revoke extra devices at /tv/setup")
 	}
+	selected := &list[0]
 	commandID, err := secret()
 	if err != nil {
 		return OpenResult{}, err
@@ -320,7 +290,7 @@ func (s *Service) OpenTitle(ctx context.Context, input OpenInput) (OpenResult, e
 		return OpenResult{}, err
 	}
 	return OpenResult{
-		Status: "accepted_by_fcm", DeviceID: selected.ID, DeviceName: selected.Name,
+		Status: "accepted_by_fcm", DeviceName: selected.Name,
 		IMDbID: input.IMDbID, MediaType: input.MediaType,
 		Note: "FCM accepted the message, but this does not confirm TV delivery or that Stremio opened.",
 	}, nil
@@ -356,7 +326,8 @@ func (s *Service) UpdateDeviceToken(ctx context.Context, id, key, token string) 
 }
 
 var (
-	ErrUnauthorized = errors.New("invalid device authentication")
-	ErrRateLimited  = errors.New("pairing attempts rate limited")
-	ErrInvalidInput = errors.New("invalid request fields")
+	ErrUnauthorized  = errors.New("invalid device authentication")
+	ErrRateLimited   = errors.New("pairing attempts rate limited")
+	ErrInvalidInput  = errors.New("invalid request fields")
+	ErrAlreadyPaired = errors.New("a TV is already paired; revoke it at /tv/setup before pairing another")
 )

@@ -14,7 +14,7 @@ The MCP exposes **five tools by default**. Your assistant can understand them di
 | **Home arrangement** | `home_layout_get` | `home_layout_update` |
 | **Watch history** | `watch_history` (`get` or batch `check`) | `watch_history` (`mark_watched` or `mark_unwatched`) |
 
-With the **optional Android TV integration** enabled (`TV_OPEN_ENABLED=true`, Firebase configured), three *additional* tools appear: `tv_pair`, `tv_devices`, and `tv_open_title`. With the flag disabled, these tools do **not** appear at all. See [Android TV remote and ADB setup](/docs/tv-remote). `tv_open_title` sends a Stremio **details page** deep link, not an autoplay command, and an FCM send acknowledgment is not a TV-delivery acknowledgment.
+With the **optional Android TV integration** enabled (`TV_OPEN_ENABLED=true`, Firebase configured), **only one additional tool** appears: `tv_open_title` (six tools total). The model never sees pairing or device-management tools; these are handled at the separately authenticated `/tv/setup` page, which supports **one paired TV**. With the flag disabled, the original five-tool interface remains unchanged. See [Android TV remote and ADB setup](/docs/tv-remote). `tv_open_title` sends a Stremio **details page** deep link, not an autoplay command; an FCM send acknowledgment is not confirmation of TV delivery.
 
 **Catalogs** manage named collections and the movies or series inside them. **Home layout** manages the order and visibility of those rows, including compatible rows from other installed add-ons. **Watch history** reads the Stremio account and updates explicit watched status; it never creates its own streaming or recommendation service.
 

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121a14">
+  <title>TV setup · Stremio Catalog MCP</title>
+  <link rel="stylesheet" href="/tv/setup.css">
+  <script src="/tv/setup.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div class="mark" aria-hidden="true">▣</div>
+      <div class="top-copy"><span class="eyebrow">STREMIO CATALOG MCP</span><h1>TV setup</h1></div>
+      <span class="tag">ONE TV</span>
+    </header>
+
+    <section class="panel" id="login-panel">
+      <div class="eyebrow">PRIVATE SETUP</div>
+      <h2>Connect to your TV settings</h2>
+      <p>Enter the private setup key for this MCP deployment. It's only held in this tab's memory and isn't saved in your browser.</p>
+      <form id="login-form">
+        <label for="setup-key">TV setup key</label>
+        <input id="setup-key" type="password" autocomplete="off" spellcheck="false" required placeholder="Paste your private setup key">
+        <button class="primary" type="submit">Unlock TV settings</button>
+      </form>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div class="panel">
+        <div class="section-top"><span class="eyebrow">CONNECTED DEVICE</span><button class="link-button" id="lock" type="button">Lock</button></div>
+        <div id="device-list" class="devices"></div>
+        <p id="device-hint" class="muted"></p>
+      </div>
+      <section class="panel" id="pair-panel">
+        <span class="eyebrow">PAIR A TV</span>
+        <h2>Connect your Android TV</h2>
+        <p>Open the Stremio TV Remote companion app on your television and choose <strong>Start pairing</strong>. Enter the eight-digit code shown on the screen.</p>
+        <form id="pair-form">
+          <label for="pair-code">Pairing code</label>
+          <input id="pair-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" spellcheck="false" required placeholder="12345678">
+          <button class="primary" type="submit">Pair this TV</button>
+        </form>
+        <p class="muted">Codes expire after 10 minutes. Pairing a second TV requires revoking the first one.</p>
+      </section>
+    </section>
+
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <footer>Only one TV can be paired with this deployment. These controls are separate from the MCP tool list.</footer>
+  </main>
+</body>
+</html>

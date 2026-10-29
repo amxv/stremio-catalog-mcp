@@ -6,6 +6,10 @@
     }
   },
   "rewrites": [
+    { "source": "/tv/setup", "destination": "/api/mcp?resource=tv&action=setup" },
+    { "source": "/tv/setup.js", "destination": "/api/mcp?resource=tv&action=setup-js" },
+    { "source": "/tv/setup.css", "destination": "/api/mcp?resource=tv&action=setup-css" },
+    { "source": "/tv/admin", "destination": "/api/mcp?resource=tv&action=admin" },
     { "source": "/tv/pair/start", "destination": "/api/mcp?resource=tv&action=pair-start" },
     { "source": "/tv/pair/status", "destination": "/api/mcp?resource=tv&action=pair-status" },
     { "source": "/tv/device/token", "destination": "/api/mcp?resource=tv&action=device-token" },

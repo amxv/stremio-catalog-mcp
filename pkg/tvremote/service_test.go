@@ -5,12 +5,15 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/amxv/stremio-catalog-mcp/pkg/catalog"
 )
 
 type memoryStore struct {
@@ -66,6 +69,9 @@ func (m *memoryStore) Approve(_ context.Context, code string, p PairPending, d D
 	current, ok := m.pending[code]
 	if !ok || current != p {
 		return false, nil
+	}
+	if len(m.devices) != 0 {
+		return false, ErrAlreadyPaired
 	}
 	delete(m.pending, code)
 	m.devices[d.ID] = d
@@ -136,7 +142,7 @@ func postJSON(t *testing.T, handler http.Handler, route, body, auth string) *htt
 func TestTVPublicPairOpenAndRevoke(t *testing.T) {
 	store := newMemoryStore()
 	sender := &fakeSender{}
-	s := &Service{Store: store, Sender: sender, Now: func() time.Time { return time.Unix(1700000000, 0) }}
+	s := &Service{Store: store, Sender: sender, SetupKey: "test-only-private-administration-secret-123456", Now: func() time.Time { return time.Unix(1700000000, 0) }}
 	handler := PublicHandler(s)
 	const firstToken = "valid_token_abcdefghijklmnopqrstuvwxyz_1"
 	start := postJSON(t, handler, "/api/mcp?resource=tv&action=pair-start",
@@ -156,13 +162,22 @@ func TestTVPublicPairOpenAndRevoke(t *testing.T) {
 	if !strings.Contains(status.Body.String(), `"status":"pending"`) {
 		t.Fatal(status.Body.String())
 	}
-	approved, err := s.ApprovePair(context.Background(), PairInput{Code: pending.Code})
-	if err != nil || !approved.Paired {
-		t.Fatalf("approval failed: %v %+v", err, approved)
+	pairResponse := postJSON(t, handler, "/api/mcp?resource=tv&action=admin",
+		`{"action":"pair","code":"`+pending.Code+`"}`, s.SetupKey)
+	if pairResponse.Code != http.StatusOK {
+		t.Fatalf("admin pair HTTP %d: %s", pairResponse.Code, pairResponse.Body.String())
 	}
-	if approved.DeviceName != "Living room TV" {
-		t.Fatalf("wrong name: %+v", approved)
+	var pairedResult struct {
+		Devices    []DeviceSummary `json:"devices"`
+		MaxDevices int             `json:"max_devices"`
 	}
+	if err := json.Unmarshal(pairResponse.Body.Bytes(), &pairedResult); err != nil {
+		t.Fatal(err)
+	}
+	if len(pairedResult.Devices) != 1 || pairedResult.MaxDevices != 1 || pairedResult.Devices[0].Name != "Living room TV" {
+		t.Fatalf("wrong device state: %+v", pairedResult)
+	}
+	approved := pairedResult.Devices[0]
 	if _, err := s.ApprovePair(context.Background(), PairInput{Code: pending.Code}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("single-use code must expire, got %v", err)
 	}
@@ -177,8 +192,8 @@ func TestTVPublicPairOpenAndRevoke(t *testing.T) {
 	if strings.Contains(start.Body.String(), firstToken) || strings.Contains(status.Body.String(), firstToken) {
 		t.Fatal("FCM token must not leak in public pairing responses")
 	}
-	if strings.Contains(mustJSON(t, approved), receipt.DeviceSecret) {
-		t.Fatal("MCP approval exposed device secret")
+	if strings.Contains(pairResponse.Body.String(), receipt.DeviceSecret) || strings.Contains(pairResponse.Body.String(), firstToken) {
+		t.Fatal("admin approval exposed device secret or FCM token")
 	}
 
 	badUpdate := postJSON(t, handler, "/api/mcp?resource=tv&action=device-token",
@@ -202,13 +217,13 @@ func TestTVPublicPairOpenAndRevoke(t *testing.T) {
 		t.Fatal("MCP response contains FCM token")
 	}
 
-	devices, err := s.Devices(context.Background(), DevicesInput{})
-	if err != nil || len(devices.Devices) != 1 || devices.Devices[0].DeviceID != approved.DeviceID {
+	devices, err := s.ListDevices(context.Background())
+	if err != nil || len(devices) != 1 || devices[0].DeviceID != approved.DeviceID {
 		t.Fatalf("devices: %+v, %v", devices, err)
 	}
-	removed, err := s.Devices(context.Background(), DevicesInput{Action: "remove", DeviceID: approved.DeviceID})
-	if err != nil || !removed.Removed || len(removed.Devices) != 0 {
-		t.Fatalf("remove: %+v, %v", removed, err)
+	removeResponse := postJSON(t, handler, "/api/mcp?resource=tv&action=admin", `{"action":"remove","device_id":"`+approved.DeviceID+`"}`, s.SetupKey)
+	if removeResponse.Code != http.StatusOK || !strings.Contains(removeResponse.Body.String(), `"devices":[]`) {
+		t.Fatalf("remove: %d %s", removeResponse.Code, removeResponse.Body.String())
 	}
 	if _, err := s.OpenTitle(context.Background(), OpenInput{MediaType: "movie", IMDbID: "tt1375666"}); err == nil {
 		t.Fatal("revoked TV must not receive a push")
@@ -261,5 +276,164 @@ func TestTVSafetyAndValidation(t *testing.T) {
 	}
 	if subtle.ConstantTimeCompare([]byte(hashSecret("x")), []byte(hashSecret("y"))) == 1 {
 		t.Fatal("hash collision")
+	}
+}
+
+func TestTVSetupAdminAuthenticationAndAssets(t *testing.T) {
+	s := &Service{Store: newMemoryStore(), Sender: &fakeSender{}, SetupKey: "test-only-43-character-owner-secret-example-7777"}
+	handler := PublicHandler(s)
+	for _, test := range []struct {
+		name, action, asset, contentType string
+	}{
+		{"html", "setup", "TV setup", "text/html"},
+		{"css", "setup-css", ".panel", "text/css"},
+		{"js", "setup-js", "/tv/admin", "text/javascript"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/mcp?resource=tv&action="+test.action, nil)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), test.asset) ||
+				!strings.HasPrefix(recorder.Header().Get("Content-Type"), test.contentType) {
+				t.Fatalf("unexpected UI response %d, content-type %s", recorder.Code, recorder.Header().Get("Content-Type"))
+			}
+			if !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "script-src 'self'") ||
+				recorder.Header().Get("Cache-Control") != "no-store" || recorder.Header().Get("X-Frame-Options") != "DENY" {
+				t.Fatal("admin UI missing security headers")
+			}
+		})
+	}
+	const route = "/api/mcp?resource=tv&action=admin"
+	for _, tc := range []struct {
+		label, key string
+		status     int
+	}{
+		{"missing key", "", http.StatusUnauthorized},
+		{"wrong key", "not-it", http.StatusUnauthorized},
+		{"valid key", s.SetupKey, http.StatusOK},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			response := postJSON(t, handler, route, `{"action":"list"}`, tc.key)
+			if response.Code != tc.status {
+				t.Fatalf("%s: %d: %s", tc.label, response.Code, response.Body.String())
+			}
+			if tc.status == 200 && !strings.Contains(response.Body.String(), `"max_devices":1`) {
+				t.Fatalf("single-TV constraint not reported: %s", response.Body.String())
+			}
+		})
+	}
+	crossSite := httptest.NewRequest(http.MethodPost, route, strings.NewReader(`{"action":"list"}`))
+	crossSite.Header.Set("Content-Type", "application/json")
+	crossSite.Header.Set("Authorization", "Bearer "+s.SetupKey)
+	crossSite.Header.Set("Origin", "https://evil.example")
+	crossRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(crossRecorder, crossSite)
+	if crossRecorder.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin admin request accepted: %d", crossRecorder.Code)
+	}
+	if response := postJSON(t, handler, route, `{"action":"play"}`, s.SetupKey); response.Code != 400 {
+		t.Fatal("admin endpoint must not support opening or playing titles")
+	}
+	if response := postJSON(t, handler, route, `{"action":"remove","device_id":"invalid"}`, s.SetupKey); response.Code != 400 {
+		t.Fatal("invalid revoke request should be rejected")
+	}
+	s.SetupKey = ""
+	if response := postJSON(t, handler, route, `{"action":"list"}`, "something"); response.Code != 503 {
+		t.Fatal("missing admin credential must fail closed")
+	}
+	for _, route := range []string{
+		"/api/mcp?resource=tv&action=setup",
+		"/api/mcp?resource=tv&action=admin",
+	} {
+		if response := postJSON(t, PublicHandler(nil), route, `{"action":"list"}`, s.SetupKey); response.Code != 404 {
+			t.Fatalf("disabled TV integration must return 404 for %s", route)
+		}
+	}
+}
+
+func TestSingleTVPairingIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	s := &Service{Store: store, Sender: &fakeSender{}}
+	codes := make([]string, 2)
+	for i := range codes {
+		code, _, err := s.StartPair(ctx, "TV", "valid_token_abcdefghijklmnopqrstuvwxyz", "192.0.2.2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		codes[i] = code
+	}
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, code := range codes {
+		wg.Add(1)
+		go func(code string) {
+			defer wg.Done()
+			_, err := s.ApprovePair(ctx, PairInput{Code: code})
+			results <- err
+		}(code)
+	}
+	wg.Wait()
+	close(results)
+	accepted, blocked := 0, 0
+	for err := range results {
+		if err == nil {
+			accepted++
+		} else if errors.Is(err, ErrAlreadyPaired) {
+			blocked++
+		} else {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if accepted != 1 || blocked != 1 {
+		t.Fatalf("pair approvals: accepted=%d,blocked=%d", accepted, blocked)
+	}
+	devices, err := s.ListDevices(ctx)
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("one-TV invariant broken: %v, %+v", err, devices)
+	}
+	if err := s.RevokeDevice(ctx, devices[0].DeviceID); err != nil {
+		t.Fatal(err)
+	}
+	devices, err = s.ListDevices(ctx)
+	if err != nil || len(devices) != 0 {
+		t.Fatalf("revoke failed: %v", err)
+	}
+}
+
+func TestRedisApproveEnforcesSingleDeviceInLua(t *testing.T) {
+	reply := -1
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var args []json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(args) != 11 {
+			t.Errorf("expected Redis EVAL command with 4 keys and 4 arguments; got %d", len(args))
+		}
+		var command, script string
+		_ = json.Unmarshal(args[0], &command)
+		_ = json.Unmarshal(args[1], &script)
+		if command != "EVAL" || !strings.Contains(script, "redis.call('SCARD', KEYS[3])") ||
+			!strings.Contains(script, "return -1") ||
+			strings.Index(script, "SCARD") > strings.Index(script, "redis.call('DEL'") {
+			t.Errorf("Lua approval must check single-device cardinality before mutating Redis")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"result":%d}`, reply)
+	}))
+	defer upstream.Close()
+	store := RedisStore{Redis: &catalog.RedisStore{
+		URL: upstream.URL, Token: "test-only-token", Key: "stremio-catalog-mcp:test", Client: upstream.Client(),
+	}}
+	p := PairPending{Name: "TV", FCMToken: "valid_token_abcdefghijklmnopqrstuvwxyz", SessionHash: hashSecret("secret")}
+	d := Device{ID: "tv_0123456789abcdef0123456789abcdef", Name: "TV"}
+	receipt := PairReceipt{Status: "paired", DeviceID: d.ID}
+	// The mocked Upstash endpoint is TLS just like production.
+	// First response simulates a concurrently paired TV (Lua return -1).
+	ok, err := store.Approve(context.Background(), "12345678", p, d, receipt)
+	if ok || !errors.Is(err, ErrAlreadyPaired) {
+		t.Fatalf("atomic conflict not surfaced: ok=%v err=%v", ok, err)
 	}
 }

@@ -162,7 +162,7 @@ The human opens **ChatGPT → Plugins → Create custom MCP server → No authen
 
 ## Verify and troubleshoot
 
-Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose **five tools by default** (or eight with the [optional Android TV remote](/docs/tv-remote) explicitly enabled). Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed. `watch_history` requires optional `STREMIO_AUTH_KEY`; verify read access first, and only mark something watched on explicit instruction.
+Run `make check`. The unauthenticated `/mcp` endpoint should return **HTTP 401**; authenticated `tools/list` should expose **five tools by default** (or six with the [optional Android TV remote](/docs/tv-remote) explicitly enabled). Verify the private Stremio manifest advertises `catalog` without streams. Create a temporary catalog, then delete it after confirming the original streaming add-ons remain installed. `watch_history` requires optional `STREMIO_AUTH_KEY`; verify read access first, and only mark something watched on explicit instruction.
 
 Stremio may cache both rows and manifests, so a refresh or restart can be necessary. The Stremio account API is not a stable public third-party interface; see [Architecture & security](/docs/architecture).
 

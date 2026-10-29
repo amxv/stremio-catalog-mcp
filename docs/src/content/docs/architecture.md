@@ -60,7 +60,8 @@ This is **not** a transaction across multiple Stremio devices. Changes made simu
 - `STREMIO_FEED_TOKEN`: separate read-only feed token embedded in Stremio's catalog URL; anyone with that URL can read the catalog contents, not modify them through MCP.
 - Redis REST credentials: private Vercel production variables; the server accepts existing Upstash-compatible HTTPS Redis REST endpoints, not arbitrary Redis TCP URLs. Durable state isn't tied to a Vercel function instance.
 - `STREMIO_AUTH_KEY`: sensitive Stremio session, used only for the account API and never returned through MCP tools.
-- `TV_OPEN_ENABLED`: explicit `true` enables three additional MCP TV tools and public, narrowly scoped pairing/credential-refresh routes. Otherwise there are exactly five MCP tools.
+- `TV_OPEN_ENABLED`: explicit `true` enables only `tv_open_title` (six MCP tools in total), plus a private TV setup page and narrowly scoped pairing/credential-refresh routes. Otherwise there are exactly five MCP tools and no TV routes.
+- `TV_SETUP_KEY`: separate 32+ character server-side secret. The `/tv/setup` page sends it only through same-origin `Authorization: Bearer` requests to `/tv/admin`. Never transmit it in a URL, publish it, persist it in browser storage, or include it in the TV APK. Device pairing and revocation are not MCP operations. One TV is enforced atomically in Redis.
 - `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_JSON`: private server-side FCM HTTP v1 credential. The TV APK contains only public Firebase Android app IDs and a separate per-device credential, never the MCP key.
 - Private account backups: may include other installed add-ons' configured URLs, so they aren't exposed through the feed or MCP.
 

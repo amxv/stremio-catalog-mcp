@@ -132,17 +132,7 @@ func serverFor(rt Runtime) *mcp.Server {
 			return nil, result, err
 		})
 	if rt.TV != nil {
-		mcp.AddTool(s, catalogTool("tv_pair", "Approve an Android TV companion pairing code displayed on the TV. Requires TV_OPEN_ENABLED=true; the code expires after ten minutes. Returns a safe device ID and name, never push credentials."),
-			func(ctx context.Context, _ *mcp.CallToolRequest, input tvremote.PairInput) (*mcp.CallToolResult, tvremote.PairResult, error) {
-				output, err := rt.TV.ApprovePair(ctx, input)
-				return nil, output, err
-			})
-		mcp.AddTool(s, catalogTool("tv_devices", "List paired Android TV devices, or explicitly revoke a device with action=remove and its device_id. Never returns push tokens or authentication secrets."),
-			func(ctx context.Context, _ *mcp.CallToolRequest, input tvremote.DevicesInput) (*mcp.CallToolResult, tvremote.DevicesResult, error) {
-				output, err := rt.TV.Devices(ctx, input)
-				return nil, output, err
-			})
-		mcp.AddTool(s, catalogTool("tv_open_title", "Send an IMDb movie or series to the paired TV so Stremio opens its detail page (not playback). Supply media_type=movie|series and imdb_id=tt...; device_id is optional when exactly one TV is paired. FCM acceptance is NOT confirmation the TV opened Stremio."),
+		mcp.AddTool(s, catalogTool("tv_open_title", "Open a movie or TV series detail page (not playback) on the single paired Android TV via Firebase Cloud Messaging. Pass media_type=movie|series and a verified imdb_id=tt...; no device selection or setup actions. The TV must first be paired through the private /tv/setup web page. FCM acceptance does not confirm TV delivery or navigation."),
 			func(ctx context.Context, _ *mcp.CallToolRequest, input tvremote.OpenInput) (*mcp.CallToolResult, tvremote.OpenResult, error) {
 				output, err := rt.TV.OpenTitle(ctx, input)
 				return nil, output, err
