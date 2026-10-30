@@ -106,6 +106,8 @@ jobs:
           mkdir -p .vercel
           mv docs/.vercel/output .vercel/output
           url="$(npx --yes vercel@latest deploy --prebuilt --yes --non-interactive)"
+          url="${url%%$'\n'*}"
+          [[ "$url" == https://* ]] || { echo "Vercel CLI did not return a deployment URL" >&2; exit 1; }
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Docs preview: %s\n' "$url" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish docs preview on pull request
