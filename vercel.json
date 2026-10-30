@@ -21,9 +21,6 @@
     { "source": "/stremio/:token/:version/catalog/:type/:id.json", "destination": "/api/mcp?token=:token&resource=catalog&type=:type&id=:id" }
   ],
   "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "*": false
-    }
+    "deploymentEnabled": false
   }
 }

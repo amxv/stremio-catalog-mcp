@@ -15,7 +15,7 @@ test('filtered GitHub pushes trigger deployment only for actual site inputs', ()
     assert.ok(block, 'missing event: ' + event);
     assert.match(block, /branches: \[main\]/);
     const found = [...block.matchAll(/^      - "([^"]+)"$/gm)].map(m => m[1]);
-    assert.deepEqual(found, ["docs/**"]);
+    assert.deepEqual(found, ["docs/src/**", "docs/public/**", "docs/package.json", "docs/bun.lock", "docs/astro.config.mjs", "docs/tsconfig.json", "docs/vercel.json", "docs/scripts/prepare-prebuilt.mjs"]);
   }
   assert.match(workflow, /secrets\.VERCEL_TOKEN/);
   assert.match(workflow, /vars\.VERCEL_ORG_ID/);
