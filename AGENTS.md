@@ -24,4 +24,4 @@
 
 ### Docs deployment
 
-The Docs GitHub Actions workflow deploys production only for the watched site paths; Vercel Git auto-deployments and `ignoreCommand` stay disabled. Keep the project-scoped `VERCEL_TOKEN` Actions secret and ID variables configured. Check Astro locally; builds run in CI.
+The Docs GitHub Actions workflow deploys production on watched site paths and Preview deployments on same-repository pull requests changing those inputs; Go-only, Android TV, and test-only changes do not deploy docs. The API uses a separate path-filtered workflow. Vercel Git auto-deployments and `ignoreCommand` stay disabled. Keep the project-scoped `VERCEL_TOKEN` Actions secret and ID variables configured. Check Astro locally; builds run in CI.

@@ -27,14 +27,14 @@ Guides are in `docs/src/content/docs/`, site navigation in `docs/src/data/docs.t
 
 ## Host a separate docs site (optional)
 
-The repository includes a **docs-only, path-filtered GitHub Actions workflow** at `.github/workflows/docs-deploy.yml`. It builds the static Astro site in GitHub Actions and deploys prebuilt output to a **second Vercel project**; the Go project isn't involved.
+The repository includes a **docs-only, path-filtered GitHub Actions workflow** at `.github/workflows/docs-deploy.yml`. It builds the static Astro site in GitHub Actions and deploys prebuilt output to a **second Vercel project**. Relevant docs pull requests also receive a Preview URL. The Go API is deployed independently through its own path-filtered workflow.
 
 To use it in your own fork:
 
-1. Create a Vercel project linked to the same GitHub repository. Configure its **Root Directory** as `docs`, **Framework Preset** as Astro, and disable automatic Git deployments for docs (already configured in `docs/vercel.json`).
+1. Create a separate Vercel project with **Root Directory** set to `docs` and **Framework Preset** set to Astro. Link it to your CI credentials, but leave automatic Vercel Git deployments disabled (already configured in `docs/vercel.json`). You don't need Vercel's Git integration because the path-filtered GitHub Action creates both production and Preview deployments.
 2. Create a **project-scoped** Vercel token limited to the docs project. In the fork, store it as a GitHub Actions secret named `VERCEL_TOKEN`.
 3. Add GitHub Actions variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`, corresponding to that docs project. Never commit the token.
-4. Push a `docs/**` change to `main`, or run the **Docs** workflow manually. The action filters paths before asking Vercel to deploy, avoiding unnecessary builds.
+4. Push a docs source or build-input change to `main`, or run the **Docs** workflow manually. A same-repository docs pull request gets a Preview URL; Go-only, Android TV, and test-only changes create no docs deployments. The action filters paths before asking Vercel to deploy, preserving quota.
 
 Your docs site does **not** need `MCP_API_KEY`, the Stremio session key, or Redis credentials. Keep those only in the Go API Vercel project. If you don't configure docs CI in your fork, simply skip deploying a custom docs site and point people to the shared [website](https://stremio-catalog-mcp.ashray.xyz/).
 
