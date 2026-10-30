@@ -9,9 +9,9 @@ on:
       - 'pkg/**'
       - 'go.mod'
       - 'go.sum'
+      - '!**/*_test.go'
       - 'vercel.json'
       - '.vercelignore'
-      - '.github/workflows/api-deploy.yml'
   pull_request:
     branches: [main]
     paths: *api_paths
