@@ -53,8 +53,8 @@ jobs:
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
           flags=()
           if [ "$EVENT_NAME" != 'pull_request' ]; then flags+=(--prod); fi
-          url="$(npx --yes vercel@65.1.0 deploy --yes --non-interactive "${flags[@]}" --token "$VERCEL_TOKEN")"
-          url="${url%%$'\n'*}"
+          deployment="$(npx --yes vercel@65.1.0 deploy --json --yes --non-interactive "${flags[@]}" --token "$VERCEL_TOKEN")"
+          url="$(printf '%s\n' "$deployment" | jq -er '.deployment.url')"
           [[ "$url" == https://* ]] || { echo "Vercel CLI did not return a deployment URL" >&2; exit 1; }
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'API deployment: %s\n' "$url" >> "$GITHUB_STEP_SUMMARY"

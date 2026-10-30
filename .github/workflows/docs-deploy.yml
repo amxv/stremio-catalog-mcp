@@ -105,8 +105,8 @@ jobs:
           fi
           mkdir -p .vercel
           mv docs/.vercel/output .vercel/output
-          url="$(npx --yes vercel@latest deploy --prebuilt --yes --non-interactive)"
-          url="${url%%$'\n'*}"
+          deployment="$(npx --yes vercel@latest deploy --json --prebuilt --yes --non-interactive)"
+          url="$(printf '%s\n' "$deployment" | jq -er '.deployment.url')"
           [[ "$url" == https://* ]] || { echo "Vercel CLI did not return a deployment URL" >&2; exit 1; }
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Docs preview: %s\n' "$url" >> "$GITHUB_STEP_SUMMARY"
